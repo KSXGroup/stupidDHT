@@ -1,10 +1,11 @@
 package main
 
 import (
-	"chord"
+	"chordNode"
 	//"fmt"
 )
 
 func main() {
-	chord.Run()
+	cmd := chordNode.NewNodeConsole(123456)
+	cmd.Run()
 }
