@@ -11,8 +11,9 @@ const (
 
 type NodeConsole struct {
 	myHelpInfo string
-	node       *ringNode
 	ipt        string
+	node       *ringNode
+	currentMsg ctrlMessage
 }
 
 func NewNodeConsole(port int32) *NodeConsole {
@@ -27,17 +28,20 @@ func (c *NodeConsole) PrintHelp() {
 }
 
 func (c *NodeConsole) Run() int {
-	var ipt string
 	go c.node.Run()
 	c.PrintLog(startInfo + c.node.ipAddress)
 	for {
-
+		if c.ipt != "" {
+			c.node.messageQueueIn <- *NewCtrlMsg(c.ipt, 0)
+			c.currentMsg = <-c.node.messageQueueOut
+			c.PrintLog(c.currentMsg.name)
+		}
+		if len(c.node.ifstop) > 0 {
+			return 0
+		}
 		c.ipt = ""
 		fmt.Print("DHT> ")
 		fmt.Scanln(&c.ipt)
-		if c.ipt != "" && int32(len(c.node.messageQueue)) != int32(MAX_QUEUE_LEN) {
-			c.node.messageQueue <- *NewCtrlMsg(ipt, 0)
-		}
 	}
 	return 0
 }

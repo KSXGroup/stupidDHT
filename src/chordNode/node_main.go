@@ -27,12 +27,13 @@ func NewCtrlMsg(_n string, _arg int32) *ctrlMessage {
 }
 
 type ringNode struct {
-	ipAddress     string
-	port          int32
-	hashedAddress [256]byte
-	messageQueue  chan ctrlMessage
-	currentMsg    ctrlMessage
-	status        uint8
+	ipAddress       string
+	port            int32
+	hashedAddress   [256]byte
+	messageQueueIn  chan ctrlMessage
+	messageQueueOut chan ctrlMessage
+	currentMsg      ctrlMessage
+	ifstop          chan uint8
 }
 
 func (n *ringNode) PrintName() {
@@ -45,7 +46,6 @@ func NewNode(port int32) *ringNode {
 	var ret = new(ringNode)
 	ret.getIp()
 	ret.port = port
-	ret.status = STOP
 	return ret
 }
 
@@ -64,19 +64,27 @@ func (n *ringNode) getIp() {
 }
 
 func (n *ringNode) handleMsg(msg *ctrlMessage) {
-	fmt.Println(msg.name)
-	if msg.name == "exit" {
-		close(n.messageQueue)
-		n.status = STOP
+	tmp := NewCtrlMsg("The message "+msg.name+" is handled", 1)
+	tmp.arg = 1
+	n.messageQueueOut <- *tmp
+	switch msg.name {
+	case "exit":
+		close(n.messageQueueOut)
+		close(n.messageQueueIn)
+		n.ifstop <- STOP
+		fmt.Print("ServerStopped\n")
+		break
 	}
+	//TODO
 }
 
 func (n *ringNode) Run() {
-	n.messageQueue = make(chan ctrlMessage, int32(MAX_QUEUE_LEN))
-	n.status = RUNNING
+	n.messageQueueIn = make(chan ctrlMessage, 1)
+	n.messageQueueOut = make(chan ctrlMessage, 1)
+	n.ifstop = make(chan uint8, 1)
 	for {
-		if len(n.messageQueue) > 0 {
-			n.currentMsg = <-n.messageQueue
+		if len(n.messageQueueIn) > 0 {
+			n.currentMsg = <-n.messageQueueIn
 			n.handleMsg(&n.currentMsg)
 		}
 	}
