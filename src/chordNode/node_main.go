@@ -2,16 +2,17 @@
 package chordNode
 
 import (
-	//"crypto/sha256"
+	"crypto/sha1"
 	"fmt"
-	//"math/big"
+	"math/big"
 	"net"
+	"strconv"
 )
 
 const (
-	MAX_QUEUE_LEN int32 = 1024
-	STOP          uint8 = 0
-	RUNNING       uint8 = 1
+	MAX_QUEUE_LEN         int32 = 1024
+	HASHED_ADDRESS_LENGTH int32 = 160
+	STOP                  uint8 = 0
 )
 
 type ctrlMessage struct {
@@ -29,23 +30,30 @@ func NewCtrlMsg(_n string, _arg int32) *ctrlMessage {
 type ringNode struct {
 	ipAddress       string
 	port            int32
-	hashedAddress   [256]byte
+	hashModAddress  big.Int
+	currentMsg      ctrlMessage
 	messageQueueIn  chan ctrlMessage
 	messageQueueOut chan ctrlMessage
-	currentMsg      ctrlMessage
 	ifstop          chan uint8
 }
 
-func (n *ringNode) PrintName() {
+func (n *ringNode) PrintNodeInfo() {
 	fmt.Println(n.ipAddress)
+	//TODO PRINT FINGER LIST
 }
 
-func (n *ringNode) Hash(ip string, port int32) {}
+func (n *ringNode) hashAddress() {
+	toHash := n.ipAddress + strconv.Itoa(int(n.port))
+	hasher := sha1.New()
+	tmp := new(big.Int).SetBytes(hasher.Sum([]byte(toHash)))
+	n.hashModAddress = *new(big.Int).Mod(tmp, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(HASHED_ADDRESS_LENGTH)), nil))
+}
 
 func NewNode(port int32) *ringNode {
 	var ret = new(ringNode)
 	ret.getIp()
 	ret.port = port
+	ret.hashAddress()
 	return ret
 }
 
@@ -82,6 +90,8 @@ func (n *ringNode) Run() {
 	n.messageQueueIn = make(chan ctrlMessage, 1)
 	n.messageQueueOut = make(chan ctrlMessage, 1)
 	n.ifstop = make(chan uint8, 1)
+	welmsg := NewCtrlMsg("The node on ip "+n.ipAddress+":"+strconv.Itoa(int(n.port)), 0)
+	n.messageQueueOut <- *welmsg
 	for {
 		if len(n.messageQueueIn) > 0 {
 			n.currentMsg = <-n.messageQueueIn

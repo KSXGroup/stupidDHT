@@ -29,7 +29,14 @@ func (c *NodeConsole) PrintHelp() {
 
 func (c *NodeConsole) Run() int {
 	go c.node.Run()
-	c.PrintLog(startInfo + c.node.ipAddress)
+	for {
+		if len(c.node.messageQueueOut) != 0 {
+			break
+		}
+	}
+	c.currentMsg = <-c.node.messageQueueOut
+	c.PrintLog(c.currentMsg.name)
+	//CODE ABOVE PRINT START INFO
 	for {
 		if c.ipt != "" {
 			c.node.messageQueueIn <- *NewCtrlMsg(c.ipt, 0)
