@@ -43,7 +43,6 @@ type ringNode struct {
 	currentMsg          ctrlMessage
 	nodeFingerTable     *fingerTable
 	userMessageQueueIn  chan ctrlMessage
-	userMessageQueueOut chan ctrlMessage
 	nodeMessageQueueOut chan ctrlMessage
 	ifStop              chan uint8
 }
@@ -66,8 +65,8 @@ func NewNode(port int32) *ringNode {
 	ret.port = port
 	ret.hashAddress()
 	ret.userMessageQueueIn = make(chan ctrlMessage, MAX_QUEUE_LEN)
-	ret.userMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
 	ret.nodeMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
+	ret.nodeFingerTable = NewFingerTable()
 	ret.ifStop = make(chan uint8, 1)
 	return ret
 }
@@ -89,10 +88,12 @@ func (n *ringNode) getIp() {
 func (n *ringNode) handleMsg(msg *ctrlMessage) {
 	tmp := NewCtrlMsgFromString("The message "+msg.name[0]+" is handled", 0)
 	time.Sleep(1000 * time.Millisecond)
-	n.userMessageQueueOut <- *tmp
+	n.nodeMessageQueueOut <- *tmp
 	switch msg.name[0] {
 	case "exit":
-		close(n.userMessageQueueOut)
+		for len(n.nodeMessageQueueOut) > 0 {
+		}
+		close(n.nodeMessageQueueOut)
 		close(n.userMessageQueueIn)
 		n.ifStop <- STOP
 		fmt.Print("node stopped\n")

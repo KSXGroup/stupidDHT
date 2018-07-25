@@ -6,10 +6,11 @@ type nodeInfo struct {
 }
 
 type fingerTable struct {
-	table       []nodeInfo
+	table       [HASHED_ADDRESS_LENGTH]nodeInfo
 	predecessor nodeInfo
 }
 
 func NewFingerTable() *fingerTable {
-	table = make(nodeInfo, HASHED_ADDRESS_LENGTH)
+	ret := new(fingerTable)
+	return ret
 }

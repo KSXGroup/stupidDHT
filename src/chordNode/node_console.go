@@ -16,6 +16,7 @@ type NodeConsole struct {
 	ipt        []string
 	node       *ringNode
 	currentMsg ctrlMessage
+	stopSigPNI chan uint8
 }
 
 func NewNodeConsole(port int32) *NodeConsole {
@@ -30,51 +31,58 @@ func (c *NodeConsole) PrintHelp() {
 
 func (c *NodeConsole) processNodeInfo() {
 	var nodeMsg ctrlMessage
-	for len(c.node.ifStop) == 0 {
-		nodeMsg = <-c.node.userMessageQueueOut
+	for {
+		nodeMsg = <-c.node.nodeMessageQueueOut
 		PrintLog("[NODE INFO]" + nodeMsg.name[0])
+		if len(c.node.ifStop) > 0 {
+			break
+		}
 	}
 	fmt.Println("PNI EXIT")
 }
 
-func (c *NodeConsole) processUserInfo() {
-	var nodeMsg ctrlMessage
-	for len(c.node.ifStop) == 0 {
-		nodeMsg = <-c.node.nodeMessageQueueOut
-		PrintLog("[USER INFO]" + nodeMsg.name[0])
-	}
-	fmt.Println("PUI EXIT")
-}
-
-func (c *NodeConsole) ScanUserCommand() *ctrlMessage {
-	scanner := bufio.NewScanner(os.Stdin)
-	var s []string
-	var ipt string
-	for len(c.node.ifStop) == 0 {
-		scanner.Scan()
-		ipt = scanner.Text()
-		if ipt != "" {
-			break
-		}
-		if len(c.node.ifStop) > 0 {
-			ipt = ""
-			break
+func (c *NodeConsole) processInput(ipt []string) int {
+	mmsg := *NewCtrlMsg(ipt, 1)
+	if len(mmsg.name) != 0 && mmsg.name[0] != "" {
+		switch mmsg.name[0] {
+		case "exit":
+			c.node.userMessageQueueIn <- mmsg
+			for len(c.node.ifStop) == 0 {
+			}
+			return 2
+		case "create":
+		case "join":
+		case "quit":
+			c.node.userMessageQueueIn <- mmsg
+			return 1
+		default:
+			return 0
 		}
 	}
-	s = strings.Fields(ipt)
-	//TODO PREPROCESS THE COMMAND OF USER
-	return NewCtrlMsg(s, 0)
+	return 0
 }
 
 func (c *NodeConsole) Run() int {
 	go c.node.Run()
 	go c.processNodeInfo()
-	go c.processUserInfo()
-	var mmsg ctrlMessage
-	for len(c.node.ifStop) == 0 {
-		mmsg = *c.ScanUserCommand()
-		if len(mmsg.name) != 0 && mmsg.name[0] != "" {
-			c.node.userMessageQueueIn <- mmsg
+	reader := bufio.NewReader(os.Stdin)
+	var ipt string
+	for {
+		if len(c.node.ifStop) != 0 {
+			return 0
+		}
+		ipt, _ = reader.ReadString('\n')
+		ipt = strings.TrimSpace(ipt)
+		ipt = strings.Replace(ipt, "\n", "", -1)
+		s := strings.Fields(ipt)
+		switch c.processInput(s) {
+		case 0:
+			PrintLog("Wrong Command")
+			break
+		case 2:
+			return 0
+		default:
+			break
 		}
 	}
 	return 0
