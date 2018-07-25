@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 )
 
 const (
@@ -29,7 +30,7 @@ func (c *NodeConsole) PrintHelp() {
 	fmt.Println(helpInfo)
 }
 
-func (c *NodeConsole) processNodeInfo() {
+func (c *NodeConsole) processNodeInfo(wg *sync.WaitGroup) {
 	var nodeMsg ctrlMessage
 	for {
 		nodeMsg = <-c.node.nodeMessageQueueOut
@@ -38,23 +39,22 @@ func (c *NodeConsole) processNodeInfo() {
 			break
 		}
 	}
-	fmt.Println("PNI EXIT")
+	wg.Done()
 }
 
 func (c *NodeConsole) processInput(ipt []string) int {
 	mmsg := *NewCtrlMsg(ipt, 1)
 	if len(mmsg.name) != 0 && mmsg.name[0] != "" {
 		switch mmsg.name[0] {
-		case "exit":
-			c.node.userMessageQueueIn <- mmsg
-			for len(c.node.ifStop) == 0 {
-			}
-			return 2
 		case "create":
+			c.node.userMessageQueueIn <- mmsg
+			return 1
+			break
 		case "join":
 		case "quit":
 			c.node.userMessageQueueIn <- mmsg
-			return 1
+			return 2
+			break
 		default:
 			return 0
 		}
@@ -63,8 +63,11 @@ func (c *NodeConsole) processInput(ipt []string) int {
 }
 
 func (c *NodeConsole) Run() int {
-	go c.node.Run()
-	go c.processNodeInfo()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go c.node.Run(&wg)
+	wg.Add(1)
+	go c.processNodeInfo(&wg)
 	reader := bufio.NewReader(os.Stdin)
 	var ipt string
 	for {
@@ -80,6 +83,7 @@ func (c *NodeConsole) Run() int {
 			PrintLog("Wrong Command")
 			break
 		case 2:
+			wg.Wait()
 			return 0
 		default:
 			break
