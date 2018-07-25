@@ -1,7 +1,10 @@
 package chordNode
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strings"
 )
 
 const (
@@ -10,8 +13,7 @@ const (
 )
 
 type NodeConsole struct {
-	myHelpInfo string
-	ipt        string
+	ipt        []string
 	node       *ringNode
 	currentMsg ctrlMessage
 }
@@ -19,36 +21,61 @@ type NodeConsole struct {
 func NewNodeConsole(port int32) *NodeConsole {
 	cmd := new(NodeConsole)
 	cmd.node = NewNode(port)
-	cmd.myHelpInfo = helpInfo
 	return cmd
 }
 
 func (c *NodeConsole) PrintHelp() {
-	fmt.Println(c.myHelpInfo)
+	fmt.Println(helpInfo)
+}
+
+func (c *NodeConsole) processNodeInfo() {
+	var nodeMsg ctrlMessage
+	for len(c.node.ifStop) == 0 {
+		nodeMsg = <-c.node.userMessageQueueOut
+		PrintLog("[NODE INFO]" + nodeMsg.name[0])
+	}
+	fmt.Println("PNI EXIT")
+}
+
+func (c *NodeConsole) processUserInfo() {
+	var nodeMsg ctrlMessage
+	for len(c.node.ifStop) == 0 {
+		nodeMsg = <-c.node.nodeMessageQueueOut
+		PrintLog("[USER INFO]" + nodeMsg.name[0])
+	}
+	fmt.Println("PUI EXIT")
+}
+
+func (c *NodeConsole) ScanUserCommand() *ctrlMessage {
+	scanner := bufio.NewScanner(os.Stdin)
+	var s []string
+	var ipt string
+	for len(c.node.ifStop) == 0 {
+		scanner.Scan()
+		ipt = scanner.Text()
+		if ipt != "" {
+			break
+		}
+		if len(c.node.ifStop) > 0 {
+			ipt = ""
+			break
+		}
+	}
+	s = strings.Fields(ipt)
+	//TODO PREPROCESS THE COMMAND OF USER
+	return NewCtrlMsg(s, 0)
 }
 
 func (c *NodeConsole) Run() int {
 	go c.node.Run()
-	for {
-		if len(c.node.messageQueueOut) != 0 {
-			break
+	go c.processNodeInfo()
+	go c.processUserInfo()
+	var mmsg ctrlMessage
+	for len(c.node.ifStop) == 0 {
+		mmsg = *c.ScanUserCommand()
+		if len(mmsg.name) != 0 && mmsg.name[0] != "" {
+			c.node.userMessageQueueIn <- mmsg
 		}
-	}
-	c.currentMsg = <-c.node.messageQueueOut
-	c.PrintLog(c.currentMsg.name)
-	//CODE ABOVE PRINT START INFO
-	for {
-		if c.ipt != "" {
-			c.node.messageQueueIn <- *NewCtrlMsg(c.ipt, 0)
-			c.currentMsg = <-c.node.messageQueueOut
-			c.PrintLog(c.currentMsg.name)
-		}
-		if len(c.node.ifstop) > 0 {
-			return 0
-		}
-		c.ipt = ""
-		fmt.Print("DHT> ")
-		fmt.Scanln(&c.ipt)
 	}
 	return 0
 }

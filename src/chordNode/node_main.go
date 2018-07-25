@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net"
 	"strconv"
+	"time"
 )
 
 const (
@@ -16,25 +17,35 @@ const (
 )
 
 type ctrlMessage struct {
-	name string
+	name []string
 	arg  int32
 }
 
-func NewCtrlMsg(_n string, _arg int32) *ctrlMessage {
+func NewCtrlMsg(_n []string, _arg int32) *ctrlMessage {
 	tmsg := new(ctrlMessage)
 	tmsg.arg = _arg
 	tmsg.name = _n
 	return tmsg
 }
 
+func NewCtrlMsgFromString(_n string, _arg int32) *ctrlMessage {
+	tmsg := new(ctrlMessage)
+	tmsg.arg = _arg
+	tmsg.name = make([]string, 1)
+	tmsg.name[0] = _n
+	return tmsg
+}
+
 type ringNode struct {
-	ipAddress       string
-	port            int32
-	hashModAddress  big.Int
-	currentMsg      ctrlMessage
-	messageQueueIn  chan ctrlMessage
-	messageQueueOut chan ctrlMessage
-	ifstop          chan uint8
+	ipAddress           string
+	port                int32
+	hashModAddress      big.Int
+	currentMsg          ctrlMessage
+	nodeFingerTable     *fingerTable
+	userMessageQueueIn  chan ctrlMessage
+	userMessageQueueOut chan ctrlMessage
+	nodeMessageQueueOut chan ctrlMessage
+	ifStop              chan uint8
 }
 
 func (n *ringNode) PrintNodeInfo() {
@@ -54,6 +65,10 @@ func NewNode(port int32) *ringNode {
 	ret.getIp()
 	ret.port = port
 	ret.hashAddress()
+	ret.userMessageQueueIn = make(chan ctrlMessage, MAX_QUEUE_LEN)
+	ret.userMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
+	ret.nodeMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
+	ret.ifStop = make(chan uint8, 1)
 	return ret
 }
 
@@ -72,30 +87,38 @@ func (n *ringNode) getIp() {
 }
 
 func (n *ringNode) handleMsg(msg *ctrlMessage) {
-	tmp := NewCtrlMsg("The message "+msg.name+" is handled", 1)
-	tmp.arg = 1
-	n.messageQueueOut <- *tmp
-	switch msg.name {
+	tmp := NewCtrlMsgFromString("The message "+msg.name[0]+" is handled", 0)
+	time.Sleep(1000 * time.Millisecond)
+	n.userMessageQueueOut <- *tmp
+	switch msg.name[0] {
 	case "exit":
-		close(n.messageQueueOut)
-		close(n.messageQueueIn)
-		n.ifstop <- STOP
-		fmt.Print("ServerStopped\n")
+		close(n.userMessageQueueOut)
+		close(n.userMessageQueueIn)
+		n.ifStop <- STOP
+		fmt.Print("node stopped\n")
 		break
 	}
 	//TODO
 }
 
-func (n *ringNode) Run() {
-	n.messageQueueIn = make(chan ctrlMessage, 1)
-	n.messageQueueOut = make(chan ctrlMessage, 1)
-	n.ifstop = make(chan uint8, 1)
-	welmsg := NewCtrlMsg("The node on ip "+n.ipAddress+":"+strconv.Itoa(int(n.port)), 0)
-	n.messageQueueOut <- *welmsg
+func (n *ringNode) ProcessUserCommand() {
+	welmsg := NewCtrlMsgFromString("The node start on ip "+n.ipAddress+":"+strconv.Itoa(int(n.port))+" with hashed addresses:"+n.hashModAddress.String(), 1)
+	n.nodeMessageQueueOut <- *welmsg
 	for {
-		if len(n.messageQueueIn) > 0 {
-			n.currentMsg = <-n.messageQueueIn
-			n.handleMsg(&n.currentMsg)
+		n.currentMsg = <-n.userMessageQueueIn
+		n.handleMsg(&n.currentMsg)
+		if len(n.ifStop) > 0 {
+			return
 		}
 	}
+}
+
+func (n *ringNode) create() {}
+
+func (n *ringNode) quit() {}
+
+func (n *ringNode) join() {}
+
+func (n *ringNode) Run() {
+	go n.ProcessUserCommand()
 }
