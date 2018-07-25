@@ -37,17 +37,17 @@ func NewCtrlMsgFromString(_n string, _arg int32) *ctrlMessage {
 	return tmsg
 }
 
-type ringNode struct {
-	info                nodeInfo
+type RingNode struct {
+	Info                NodeInfo
 	currentMsg          ctrlMessage
 	nodeFingerTable     *fingerTable
-	userMessageQueueIn  chan ctrlMessage
-	nodeMessageQueueOut chan ctrlMessage
-	ifStop              chan uint8
+	UserMessageQueueIn  chan ctrlMessage
+	NodeMessageQueueOut chan ctrlMessage
+	IfStop              chan uint8
 }
 
-func (n *ringNode) PrintNodeInfo() {
-	fmt.Println(n.info.ipAddress)
+func (n *RingNode) PrintNodeInfo() {
+	fmt.Println(n.Info.IpAddress)
 	//TODO PRINT FINGER LIST
 }
 
@@ -59,17 +59,17 @@ func hashAddress(ip string, port int32) big.Int {
 	return hashModAddress
 }
 
-func NewNode(port int32) *ringNode {
-	var ret = new(ringNode)
-	ret.info = *NewNodeInfo(ret.getIp(), port)
-	ret.userMessageQueueIn = make(chan ctrlMessage, MAX_QUEUE_LEN)
-	ret.nodeMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
+func NewNode(port int32) *RingNode {
+	var ret = new(RingNode)
+	ret.Info = *NewNodeInfo(ret.getIp(), port)
+	ret.UserMessageQueueIn = make(chan ctrlMessage, MAX_QUEUE_LEN)
+	ret.NodeMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
 	ret.nodeFingerTable = NewFingerTable()
-	ret.ifStop = make(chan uint8, 1)
+	ret.IfStop = make(chan uint8, 1)
 	return ret
 }
 
-func (n *ringNode) getIp() string {
+func (n *RingNode) getIp() string {
 	var ipAddress string
 	addrList, err := net.InterfaceAddrs()
 	if err != nil {
@@ -85,25 +85,25 @@ func (n *ringNode) getIp() string {
 	return ipAddress
 }
 
-func (n *ringNode) handleMsg(msg *ctrlMessage) {
+func (n *RingNode) handleMsg(msg *ctrlMessage) {
 	tmp := NewCtrlMsgFromString("The message "+msg.name[0]+" is handled", 0)
 	//time.Sleep(1000 * time.Millisecond)
-	n.nodeMessageQueueOut <- *tmp
+	n.NodeMessageQueueOut <- *tmp
 	switch msg.name[0] {
 	case "quit":
 		n.quit()
-		for len(n.nodeMessageQueueOut) > 0 {
+		for len(n.NodeMessageQueueOut) > 0 {
 		}
-		close(n.nodeMessageQueueOut)
-		close(n.userMessageQueueIn)
+		close(n.NodeMessageQueueOut)
+		close(n.UserMessageQueueIn)
 		defer func() {
-			n.ifStop <- STOP
-			fmt.Print("node stopped\n")
+			n.IfStop <- STOP
+			PrintLog("[STOP INFO]Node Stop")
 		}()
 		break
 	case "create":
 		n.create()
-		n.nodeMessageQueueOut <- *NewCtrlMsgFromString("Create ring and set table[0] and pre to "+n.info.ipAddress+" : "+strconv.Itoa(int(n.info.port)), 1)
+		n.NodeMessageQueueOut <- *NewCtrlMsgFromString("Create ring and set table[0] and pre to "+n.Info.IpAddress+" : "+strconv.Itoa(int(n.Info.Port)), 1)
 		break
 	case "join":
 		n.join()
@@ -113,31 +113,31 @@ func (n *ringNode) handleMsg(msg *ctrlMessage) {
 	//TODO
 }
 
-func (n *ringNode) ProcessUserCommand(wg *sync.WaitGroup) {
-	welmsg := NewCtrlMsgFromString("The node start on ip "+n.info.ipAddress+":"+strconv.Itoa(int(n.info.port))+" with hashed addresses:"+n.info.hashedAddress.String(), 1)
-	n.nodeMessageQueueOut <- *welmsg
+func (n *RingNode) ProcessUserCommand(wg *sync.WaitGroup) {
+	welmsg := NewCtrlMsgFromString("The node start on ip "+n.Info.IpAddress+":"+strconv.Itoa(int(n.Info.Port))+" with hashed addresses:"+n.Info.hashedAddress.String(), 1)
+	n.NodeMessageQueueOut <- *welmsg
 	for {
-		n.currentMsg = <-n.userMessageQueueIn
+		n.currentMsg = <-n.UserMessageQueueIn
 		n.handleMsg(&n.currentMsg)
-		if len(n.ifStop) > 0 {
+		if len(n.IfStop) > 0 {
 			break
 		}
 	}
 	wg.Done()
 }
 
-func (n *ringNode) create() {
-	n.nodeFingerTable.table[0] = n.info
-	n.nodeFingerTable.predecessor = n.info
+func (n *RingNode) create() {
+	n.nodeFingerTable.table[0] = n.Info
+	n.nodeFingerTable.predecessor = n.Info
 }
 
-func (n *ringNode) quit() {}
+func (n *RingNode) quit() {}
 
-func (n *ringNode) join() {}
+func (n *RingNode) join() {}
 
-//func (n *ringNode) closestPrecedingNode(hashedAddress big.Int) *nodeInfo {}
+//func (n *RingNode) closestPrecedingNode(hashedAddress big.Int) *NodeInfo {}
 
-func (n *ringNode) Run(wg *sync.WaitGroup) {
+func (n *RingNode) Run(wg *sync.WaitGroup) {
 	var wgi sync.WaitGroup
 	wgi.Add(1)
 	go n.ProcessUserCommand(&wgi)

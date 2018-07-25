@@ -15,7 +15,7 @@ const (
 
 type NodeConsole struct {
 	ipt        []string
-	node       *ringNode
+	node       *RingNode
 	currentMsg ctrlMessage
 	stopSigPNI chan uint8
 }
@@ -33,9 +33,9 @@ func (c *NodeConsole) PrintHelp() {
 func (c *NodeConsole) processNodeInfo(wg *sync.WaitGroup) {
 	var nodeMsg ctrlMessage
 	for {
-		nodeMsg = <-c.node.nodeMessageQueueOut
+		nodeMsg = <-c.node.NodeMessageQueueOut
 		PrintLog("[NODE INFO]" + nodeMsg.name[0])
-		if len(c.node.ifStop) > 0 {
+		if len(c.node.IfStop) > 0 {
 			break
 		}
 	}
@@ -47,12 +47,12 @@ func (c *NodeConsole) processInput(ipt []string) int {
 	if len(mmsg.name) != 0 && mmsg.name[0] != "" {
 		switch mmsg.name[0] {
 		case "create":
-			c.node.userMessageQueueIn <- mmsg
+			c.node.UserMessageQueueIn <- mmsg
 			return 1
 			break
 		case "join":
 		case "quit":
-			c.node.userMessageQueueIn <- mmsg
+			c.node.UserMessageQueueIn <- mmsg
 			return 2
 			break
 		default:
@@ -71,7 +71,7 @@ func (c *NodeConsole) Run() int {
 	reader := bufio.NewReader(os.Stdin)
 	var ipt string
 	for {
-		if len(c.node.ifStop) != 0 {
+		if len(c.node.IfStop) != 0 {
 			return 0
 		}
 		ipt, _ = reader.ReadString('\n')

@@ -4,15 +4,15 @@ import (
 	"math/big"
 )
 
-type nodeInfo struct {
-	ipAddress     string
-	port          int32
+type NodeInfo struct {
+	IpAddress     string
+	Port          int32
 	hashedAddress big.Int
 }
 
 type fingerTable struct {
-	table       [HASHED_ADDRESS_LENGTH]nodeInfo
-	predecessor nodeInfo
+	table       [HASHED_ADDRESS_LENGTH]NodeInfo
+	predecessor NodeInfo
 }
 
 func NewFingerTable() *fingerTable {
@@ -20,10 +20,10 @@ func NewFingerTable() *fingerTable {
 	return ret
 }
 
-func NewNodeInfo(ip string, port int32) *nodeInfo {
-	ret := new(nodeInfo)
-	ret.ipAddress = ip
-	ret.port = port
+func NewNodeInfo(ip string, port int32) *NodeInfo {
+	ret := new(NodeInfo)
+	ret.IpAddress = ip
+	ret.Port = port
 	ret.hashedAddress = hashAddress(ip, port)
 	return ret
 }
