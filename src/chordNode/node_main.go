@@ -6,15 +6,17 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"net/rpc"
 	"strconv"
 	"sync"
 	//"time"
 )
 
 const (
-	MAX_QUEUE_LEN         int32 = 1024
-	HASHED_ADDRESS_LENGTH int32 = 160
-	STOP                  uint8 = 0
+	EXIT_TIP              string = "You can press ANY KEY to exit."
+	MAX_QUEUE_LEN         int32  = 1024
+	HASHED_ADDRESS_LENGTH int32  = 160
+	STOP                  uint8  = 0
 )
 
 type ctrlMessage struct {
@@ -41,6 +43,7 @@ type RingNode struct {
 	Info                NodeInfo
 	currentMsg          ctrlMessage
 	nodeFingerTable     *fingerTable
+	rpcModule           *rpcHandler
 	UserMessageQueueIn  chan ctrlMessage
 	NodeMessageQueueOut chan ctrlMessage
 	IfStop              chan uint8
@@ -66,6 +69,8 @@ func NewNode(port int32) *RingNode {
 	ret.NodeMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
 	ret.nodeFingerTable = NewFingerTable()
 	ret.IfStop = make(chan uint8, 1)
+	ret.rpcModule = newRpcHandler(ret)
+	rpc.Register(ret.rpcModule)
 	return ret
 }
 
@@ -91,22 +96,22 @@ func (n *RingNode) handleMsg(msg *ctrlMessage) {
 	n.NodeMessageQueueOut <- *tmp
 	switch msg.name[0] {
 	case "quit":
-		n.quit()
+		n.Quit()
 		for len(n.NodeMessageQueueOut) > 0 {
 		}
-		close(n.NodeMessageQueueOut)
-		close(n.UserMessageQueueIn)
 		defer func() {
 			n.IfStop <- STOP
+			close(n.NodeMessageQueueOut)
+			close(n.UserMessageQueueIn)
 			PrintLog("[STOP INFO]Node Stop")
 		}()
 		break
 	case "create":
-		n.create()
-		n.NodeMessageQueueOut <- *NewCtrlMsgFromString("Create ring and set table[0] and pre to "+n.Info.IpAddress+" : "+strconv.Itoa(int(n.Info.Port)), 1)
+		n.Create()
+		n.NodeMessageQueueOut <- *NewCtrlMsgFromString("Create ring and set table[0] and pre to "+n.Info.IpAddress+":"+strconv.Itoa(int(n.Info.Port)), 1)
 		break
 	case "join":
-		n.join()
+		n.Join()
 		break
 	default:
 	}
@@ -117,28 +122,29 @@ func (n *RingNode) ProcessUserCommand(wg *sync.WaitGroup) {
 	welmsg := NewCtrlMsgFromString("The node start on ip "+n.Info.IpAddress+":"+strconv.Itoa(int(n.Info.Port))+" with hashed addresses:"+n.Info.hashedAddress.String(), 1)
 	n.NodeMessageQueueOut <- *welmsg
 	for {
-		n.currentMsg = <-n.UserMessageQueueIn
-		n.handleMsg(&n.currentMsg)
 		if len(n.IfStop) > 0 {
 			break
 		}
+		n.currentMsg = <-n.UserMessageQueueIn
+		n.handleMsg(&n.currentMsg)
 	}
 	wg.Done()
 }
 
-func (n *RingNode) create() {
+func (n *RingNode) Create() {
 	n.nodeFingerTable.table[0] = n.Info
 	n.nodeFingerTable.predecessor = n.Info
 }
 
-func (n *RingNode) quit() {}
+func (n *RingNode) Quit() {}
 
-func (n *RingNode) join() {}
+func (n *RingNode) Join() {}
 
 //func (n *RingNode) closestPrecedingNode(hashedAddress big.Int) *NodeInfo {}
 
 func (n *RingNode) Run(wg *sync.WaitGroup) {
 	var wgi sync.WaitGroup
+	n.rpcModule.startListen()
 	wgi.Add(1)
 	go n.ProcessUserCommand(&wgi)
 	wgi.Wait()

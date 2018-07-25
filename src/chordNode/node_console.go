@@ -44,6 +44,9 @@ func (c *NodeConsole) processNodeInfo(wg *sync.WaitGroup) {
 
 func (c *NodeConsole) processInput(ipt []string) int {
 	mmsg := *NewCtrlMsg(ipt, 1)
+	if len(c.node.IfStop) > 0 {
+		return 2
+	}
 	if len(mmsg.name) != 0 && mmsg.name[0] != "" {
 		switch mmsg.name[0] {
 		case "create":
@@ -71,9 +74,6 @@ func (c *NodeConsole) Run() int {
 	reader := bufio.NewReader(os.Stdin)
 	var ipt string
 	for {
-		if len(c.node.IfStop) != 0 {
-			return 0
-		}
 		ipt, _ = reader.ReadString('\n')
 		ipt = strings.TrimSpace(ipt)
 		ipt = strings.Replace(ipt, "\n", "", -1)
