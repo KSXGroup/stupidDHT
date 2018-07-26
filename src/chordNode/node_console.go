@@ -54,6 +54,11 @@ func (c *NodeConsole) processInput(ipt []string) int {
 			return 1
 			break
 		case "join":
+			c.node.UserMessageQueueIn <- mmsg
+			return 1
+		case "ping":
+			c.node.UserMessageQueueIn <- mmsg
+			return 1
 		case "quit":
 			c.node.UserMessageQueueIn <- mmsg
 			return 2

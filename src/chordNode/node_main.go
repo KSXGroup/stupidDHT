@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"net/rpc"
 	"strconv"
 	"sync"
 	//"time"
@@ -43,7 +42,7 @@ type RingNode struct {
 	Info                NodeInfo
 	currentMsg          ctrlMessage
 	nodeFingerTable     *fingerTable
-	rpcModule           *rpcHandler
+	rpcModule           *rpcServer
 	UserMessageQueueIn  chan ctrlMessage
 	NodeMessageQueueOut chan ctrlMessage
 	IfStop              chan uint8
@@ -69,8 +68,8 @@ func NewNode(port int32) *RingNode {
 	ret.NodeMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
 	ret.nodeFingerTable = NewFingerTable()
 	ret.IfStop = make(chan uint8, 1)
-	ret.rpcModule = newRpcHandler(ret)
-	rpc.Register(ret.rpcModule)
+	ret.rpcModule = newRpcServer(ret)
+	ret.rpcModule.server.RegisterName("RingRPC", ret.rpcModule.service)
 	return ret
 }
 
@@ -113,6 +112,10 @@ func (n *RingNode) handleMsg(msg *ctrlMessage) {
 	case "join":
 		n.Join()
 		break
+	case "ping":
+		ret := n.rpcModule.ping("fuck", msg.name[1])
+		n.NodeMessageQueueOut <- *NewCtrlMsgFromString(ret, 0)
+		break
 	default:
 	}
 	//TODO
@@ -136,7 +139,9 @@ func (n *RingNode) Create() {
 	n.nodeFingerTable.predecessor = n.Info
 }
 
-func (n *RingNode) Quit() {}
+func (n *RingNode) Quit() {
+	n.rpcModule.stopListen()
+}
 
 func (n *RingNode) Join() {}
 
@@ -147,6 +152,9 @@ func (n *RingNode) Run(wg *sync.WaitGroup) {
 	n.rpcModule.startListen()
 	wgi.Add(1)
 	go n.ProcessUserCommand(&wgi)
+	for len(n.IfStop) == 0 {
+		n.rpcModule.server.Accept(n.rpcModule.listener)
+	}
 	wgi.Wait()
 	wg.Done()
 }

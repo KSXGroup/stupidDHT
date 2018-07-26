@@ -5,6 +5,6 @@ import (
 )
 
 func main() {
-	cmd := chordNode.NewNodeConsole(123456)
+	cmd := chordNode.NewNodeConsole(12345)
 	cmd.Run()
 }
