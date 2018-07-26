@@ -7,7 +7,7 @@ import (
 type NodeInfo struct {
 	IpAddress     string
 	Port          int32
-	hashedAddress big.Int
+	HashedAddress big.Int
 }
 
 type fingerTable struct {
@@ -24,6 +24,6 @@ func NewNodeInfo(ip string, port int32) *NodeInfo {
 	ret := new(NodeInfo)
 	ret.IpAddress = ip
 	ret.Port = port
-	ret.hashedAddress = hashAddress(ip, port)
+	ret.HashedAddress = hashAddress(ip, port)
 	return ret
 }

@@ -57,7 +57,14 @@ func (c *NodeConsole) processInput(ipt []string) int {
 			c.node.UserMessageQueueIn <- mmsg
 			return 1
 		case "ping":
-			c.node.UserMessageQueueIn <- mmsg
+			if len(mmsg.name) == 2 {
+				c.node.UserMessageQueueIn <- mmsg
+				return 1
+			} else {
+				return 0
+			}
+		case "help":
+			c.PrintHelp()
 			return 1
 		case "quit":
 			c.node.UserMessageQueueIn <- mmsg

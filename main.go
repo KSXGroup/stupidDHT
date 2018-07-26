@@ -2,9 +2,12 @@ package main
 
 import (
 	"chordNode"
+	"fmt"
 )
 
 func main() {
-	cmd := chordNode.NewNodeConsole(12345)
+	var i int
+	fmt.Scanf("%d", &i)
+	cmd := chordNode.NewNodeConsole(int32(i))
 	cmd.Run()
 }
