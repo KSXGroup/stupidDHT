@@ -69,12 +69,31 @@ func (n *RingNode) DumpData() {
 	}
 }
 
+// if i between a and b with a < b
+func Between(a *big.Int, b *big.Int, i *big.Int) bool {
+	if a.Cmp(b) != 1 {
+		return (a.Cmp(i) == -1 && b.Cmp(i) == 1)
+	} else {
+		nb := new(big.Int).Add(b, new(big.Int).Exp(big.NewInt(2), big.NewInt(160), nil))
+		return (a.Cmp(i) == -1 && nb.Cmp(i) == 1)
+	}
+}
+
+func (n *RingNode) closetPrecedingNode(v HashedValue) *NodeInfo {
+	for pos := HASHED_ADDRESS_LENGTH - 1; pos >= 0; pos -= 1 {
+		if Between(&n.Info.HashedAddress, &v.V, &n.nodeFingerTable.table[pos].remoteNode.HashedAddress) {
+			return &n.nodeFingerTable.table[pos].remoteNode
+		}
+	}
+	return &n.Info
+}
+
 func hashAddress(ip string, port int32) big.Int {
 	toHash := ip + strconv.Itoa(int(port))
 	hasher := sha1.New()
 	tmp := new(big.Int).SetBytes(hasher.Sum([]byte(toHash)))
-	//hashModAddress := *new(big.Int).Mod(tmp, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(HASHED_ADDRESS_LENGTH)), nil))
-	return *tmp
+	hashModAddress := *new(big.Int).Mod(tmp, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(HASHED_ADDRESS_LENGTH)), nil))
+	return hashModAddress
 }
 
 func NewNode(port int32) *RingNode {
@@ -154,19 +173,23 @@ func (n *RingNode) ProcessUserCommand(wg *sync.WaitGroup) {
 }
 
 func (n *RingNode) Create() {
-	n.nodeFingerTable.table[0] = n.Info
 	n.nodeFingerTable.predecessor.IpAddress = ""
 	n.nodeFingerTable.predecessor.Port = -1
+	for pos, _ := range n.nodeFingerTable.table {
+		n.nodeFingerTable.table[pos].remoteNode = n.Info
+		n.nodeFingerTable.table[pos].HashedStartAddress = *AddPowerOfTwo(&n.Info.HashedAddress, pos)
+	}
 	n.InRing = true
 }
 
 func (n *RingNode) Quit() {
+	n.InRing = false
 }
 
 func (n *RingNode) Join(addrWithPort string) {
 	n.nodeFingerTable.predecessor.IpAddress = ""
 	n.nodeFingerTable.predecessor.Port = -1
-	//n.rpcModule.join(string)
+	n.rpcModule.join(addrWithPort)
 }
 
 func (n *RingNode) Run(wg *sync.WaitGroup) {
