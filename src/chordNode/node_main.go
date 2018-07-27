@@ -55,8 +55,18 @@ type RingNode struct {
 }
 
 func (n *RingNode) PrintNodeInfo() {
-	fmt.Println(n.Info.IpAddress)
+	n.Info.Print()
 	//TODO PRINT FINGER LIST
+}
+
+func (n *RingNode) DumpData() {
+	if len(n.data) == 0 {
+		fmt.Println("No Data")
+	} else {
+		for k, v := range n.data {
+			fmt.Println(string(k) + " " + string(v))
+		}
+	}
 }
 
 func hashAddress(ip string, port int32) big.Int {
