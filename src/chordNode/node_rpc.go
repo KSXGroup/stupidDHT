@@ -24,8 +24,6 @@ type rpcServer struct {
 	listener *net.TCPListener
 	service  *RpcServiceModule
 	timeout  time.Duration
-	//client part below
-	client *rpc.Client
 }
 
 type RpcServiceModule struct {
@@ -89,13 +87,13 @@ func (h *rpcServer) ping(g string, addr string) string {
 	if tconn == nil {
 		return ""
 	}
-	h.client = rpc.NewClient(tconn)
-	err := h.client.Call("RingRPC.Ping", arg, &relpy)
+	cl := rpc.NewClient(tconn)
+	err := cl.Call("RingRPC.Ping", arg, &relpy)
 	if err != nil {
 		h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Call Fail:"+err.Error(), 0)
 		return ""
 	} else {
-		h.client.Close()
+		cl.Close()
 		return relpy.Name
 	}
 }
@@ -105,7 +103,7 @@ func (h *rpcServer) put(k KeyType, v ValueType) {
 
 func (h *rpcServer) join(addrWithPort string) {}
 
-func (h *RpcServiceModule) FindSuccessor(p HashedValue, ret *HashedValue) (err error) {
+func (h *RpcServiceModule) FindSuccessor(p HashedValue, ret *NodeInfo) (err error) {
 	if p.V.String() == "" {
 		err = errors.New("INVALID ADDRESS")
 		return
@@ -113,16 +111,29 @@ func (h *RpcServiceModule) FindSuccessor(p HashedValue, ret *HashedValue) (err e
 	n := &h.node.Info.HashedAddress
 	successor := &h.node.nodeFingerTable.table[0].HashedAddress
 	if p.V.Cmp(n) == 1 && p.V.Cmp(successor) == -1 {
-		ret.V = h.node.nodeFingerTable.table[0].HashedAddress
+		ret = &h.node.nodeFingerTable.table[0]
 		return
 	} else {
-		//TODO CALL ClosetPrecedingNode()
-		//TODO CALL
+		var cpn NodeInfo
+		h.ClosestPrecedingNode(p, &cpn)
+		tconn := *h.node.rpcModule.rpcDial(cpn.IpAddress + ":" + strconv.Itoa(int(cpn.Port)))
+		if tconn == nil {
+			err = errors.New("Network error")
+			return nil
+		}
+		cl := rpc.NewClient(tconn)
+		rerr := cl.Call("RingRPC.FindSuccessor", p, &cpn)
+		if err != nil {
+			err = rerr
+			return nil
+		} else {
+			ret = &cpn
+			return nil
+		}
 	}
-	return
 }
 
-func (h *RpcServiceModule) ClosestPrecedingNode(p HashedValue, ret *HashedValue) (err error) {
+func (h *RpcServiceModule) ClosestPrecedingNode(p HashedValue, ret *NodeInfo) (err error) {
 	return
 }
 
