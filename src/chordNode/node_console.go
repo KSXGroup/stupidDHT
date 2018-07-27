@@ -11,6 +11,7 @@ import (
 const (
 	helpInfo  string = "There is no help info, you are on your own"
 	startInfo string = "Node start on ip: "
+	pingHelp  string = "ping [IP Address]:[Port]"
 )
 
 type NodeConsole struct {
@@ -59,10 +60,10 @@ func (c *NodeConsole) processInput(ipt []string) int {
 		case "ping":
 			if len(mmsg.name) == 2 {
 				c.node.UserMessageQueueIn <- mmsg
-				return 1
 			} else {
-				return 0
+				fmt.Println(pingHelp)
 			}
+			return 1
 		case "help":
 			c.PrintHelp()
 			return 1

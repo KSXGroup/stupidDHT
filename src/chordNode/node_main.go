@@ -18,6 +18,10 @@ const (
 	STOP                  uint8  = 0
 )
 
+type KeyType string
+
+type ValueType string
+
 type ctrlMessage struct {
 	name []string
 	arg  int32
@@ -42,6 +46,7 @@ type RingNode struct {
 	Info                NodeInfo
 	InRing              bool
 	currentMsg          ctrlMessage
+	data                map[KeyType]ValueType
 	nodeFingerTable     *fingerTable
 	rpcModule           *rpcServer
 	UserMessageQueueIn  chan ctrlMessage
@@ -153,8 +158,6 @@ func (n *RingNode) Join(addrWithPort string) {
 	n.nodeFingerTable.predecessor.Port = -1
 	//n.rpcModule.join(string)
 }
-
-//func (n *RingNode) closestPrecedingNode(hashedAddress big.Int) *NodeInfo {}
 
 func (n *RingNode) Run(wg *sync.WaitGroup) {
 	var wgi sync.WaitGroup

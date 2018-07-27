@@ -18,14 +18,6 @@ type Greet struct {
 	Name string
 }
 
-type KeyType struct {
-	K string
-}
-
-type ValueType struct {
-	V string
-}
-
 type rpcServer struct {
 	node     *RingNode
 	server   *rpc.Server
@@ -80,16 +72,25 @@ func (h *rpcServer) accept() {
 	}
 }
 
+func (h *rpcServer) rpcDial(addr string) *net.Conn {
+	tconn, err := net.DialTimeout("tcp", addr, h.timeout)
+	if err != nil {
+		h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Dial fail "+addr+" "+err.Error(), 0)
+		return nil
+	} else {
+		return &tconn
+	}
+}
+
 func (h *rpcServer) ping(g string, addr string) string {
 	var relpy, arg Greet
 	arg.Name = g
-	tconn, err := net.DialTimeout("tcp", addr, h.timeout)
-	if err != nil {
-		h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Dial fail when PING: "+err.Error(), 0)
+	tconn := *h.rpcDial(addr)
+	if tconn == nil {
 		return ""
 	}
 	h.client = rpc.NewClient(tconn)
-	err = h.client.Call("RingRPC.Ping", arg, &relpy)
+	err := h.client.Call("RingRPC.Ping", arg, &relpy)
 	if err != nil {
 		h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Call Fail:"+err.Error(), 0)
 		return ""
@@ -102,20 +103,28 @@ func (h *rpcServer) ping(g string, addr string) string {
 func (h *rpcServer) put(k KeyType, v ValueType) {
 }
 
-func (h *rpcServer) join(addrWithPort) {}
+func (h *rpcServer) join(addrWithPort string) {}
 
 func (h *RpcServiceModule) FindSuccessor(p HashedValue, ret *HashedValue) (err error) {
-	z := big.Int{}
 	if p.V.String() == "" {
 		err = errors.New("INVALID ADDRESS")
 		return
 	}
-	//TODO ADDRESS FIND IN FINGER TABLE
-	ret.V = *z.Add(&p.V, big.NewInt(1))
+	n := &h.node.Info.HashedAddress
+	successor := &h.node.nodeFingerTable.table[0].HashedAddress
+	if p.V.Cmp(n) == 1 && p.V.Cmp(successor) == -1 {
+		ret.V = h.node.nodeFingerTable.table[0].HashedAddress
+		return
+	} else {
+		//TODO CALL ClosetPrecedingNode()
+		//TODO CALL
+	}
 	return
 }
 
-//func (h *RpcServiceModule) ClosestPrecedingNode() (err error) {}
+func (h *RpcServiceModule) ClosestPrecedingNode(p HashedValue, ret *HashedValue) (err error) {
+	return
+}
 
 func (h *RpcServiceModule) Ping(p Greet, ret *Greet) (err error) {
 	if p.Name == "" {
@@ -128,5 +137,4 @@ func (h *RpcServiceModule) Ping(p Greet, ret *Greet) (err error) {
 }
 
 func (n *RpcServiceModule) notify(target *NodeInfo) {}
-func (n *RpcServiceModule) ping(target *NodeInfo)   {}
 func (n *RpcServiceModule) stablize()               {}
