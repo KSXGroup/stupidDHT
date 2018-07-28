@@ -21,12 +21,6 @@ type Greet struct {
 	From NodeInfo
 }
 
-type NodeValue struct {
-	V      NodeInfo
-	From   NodeInfo
-	Status bool
-}
-
 type rpcServer struct {
 	node       *RingNode
 	server     *rpc.Server
@@ -106,7 +100,7 @@ func (h *rpcServer) ping(g string, addr string) string {
 		return ""
 	}
 	cl := rpc.NewClient(tconn)
-	err := cl.Call("RingRPC.Ping", arg, &relpy)
+	err := cl.Call("RingRPC.Ping", &arg, &relpy)
 	if err != nil {
 		cl.Close()
 		h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Call Fail:"+err.Error(), 0)
@@ -170,7 +164,7 @@ func (h *rpcServer) findSuccessor(v *big.Int) *NodeValue {
 				cl = rpc.NewClient(*tconn)
 				tmp.From = h.node.Info
 				tmp.V = cpn.HashedAddress
-				rerr := cl.Call("RingRPC.FindSuccessor", tmp, reply)
+				rerr := cl.Call("RingRPC.FindSuccessor", &tmp, &reply)
 				if rerr != nil {
 					h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Call remote FindSuccessor fail:"+rerr.Error(), 0)
 					cl.Close()
@@ -193,19 +187,19 @@ func (h *rpcServer) join(addrWithPort string) bool {
 		return false
 	} else {
 		var arg HashedValue
-		var ret NodeInfo
+		var ret NodeValue
 		arg.V = h.node.Info.HashedAddress
 		arg.From = h.node.Info
 		cl := rpc.NewClient(*tconn)
-		rerr := cl.Call("RingRPC.FindSuccessor", arg, &ret)
+		rerr := cl.Call("RingRPC.FindSuccessor", &arg, &ret)
 		if rerr != nil {
 			cl.Close()
 			h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Call remote FindSuccessor fail:"+rerr.Error(), 0)
 			return false
 		} else {
 			cl.Close()
-			h.node.nodeSuccessorList.list[0] = ret
-			h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Update successor[0]: "+ret.GetAddrWithPort(), 0)
+			h.node.nodeSuccessorList.list[0] = ret.V
+			h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Update successor[0]: "+ret.V.GetAddrWithPort(), 0)
 			return true
 		}
 	}
@@ -228,7 +222,7 @@ func (h *rpcServer) stablize(wg *sync.WaitGroup) {
 		arg.From = h.node.Info
 		arg.V = h.node.Info.HashedAddress
 		cl := rpc.NewClient(tconn)
-		rerr := cl.Call("RingRPC.GetPredecessor", arg, &reply)
+		rerr := cl.Call("RingRPC.GetPredecessor", &arg, &reply)
 		if rerr != nil {
 			cl.Close()
 			h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Call remote GetPredecssor fail: "+target.GetAddrWithPort(), 0)

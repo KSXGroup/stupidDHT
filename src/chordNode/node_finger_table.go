@@ -27,6 +27,12 @@ type successorList struct {
 	length uint8
 }
 
+type NodeValue struct {
+	V      NodeInfo
+	From   NodeInfo
+	Status bool
+}
+
 func newNodeValue(_v *NodeInfo, _f *NodeInfo, _s bool) *NodeValue {
 	ret := new(NodeValue)
 	ret.V = *_v
@@ -97,13 +103,11 @@ func (f *fingerTable) DumpFingerTable() {
 	if f.table[0].remoteNode.IpAddress == "" {
 		fmt.Println("There is nothing in finger table")
 	} else {
-		pos := 0
-		for {
-			if f.table[pos].remoteNode.IpAddress == "" {
+		for i := 0; i < 160; i += 1 {
+			if f.table[i].remoteNode.IpAddress == "" {
 				break
 			} else {
-				f.table[pos].Print()
-				pos += 1
+				f.table[i].Print()
 			}
 		}
 	}

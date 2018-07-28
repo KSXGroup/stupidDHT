@@ -91,7 +91,8 @@ func (n *RingNode) closestPrecedingNode(v HashedValue) *NodeInfo {
 func hashAddress(ip string, port int32) big.Int {
 	toHash := ip + strconv.Itoa(int(port))
 	hasher := sha1.New()
-	tmp := new(big.Int).SetBytes(hasher.Sum([]byte(toHash)))
+	hasher.Write([]byte(toHash))
+	tmp := new(big.Int).SetBytes(hasher.Sum(nil))
 	hashModAddress := *new(big.Int).Mod(tmp, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(HASHED_ADDRESS_LENGTH)), nil))
 	return hashModAddress
 }
