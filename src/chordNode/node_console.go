@@ -66,7 +66,7 @@ func (c *NodeConsole) processInput(ipt []string) int {
 			c.PrintHelp()
 			return 1
 		case "join":
-			if len(mmsg.name == 2) {
+			if len(mmsg.name) == 2 {
 				c.node.UserMessageQueueIn <- mmsg
 			} else {
 				fmt.Print(joinHelp)

@@ -147,7 +147,10 @@ func (n *RingNode) handleMsg(msg *ctrlMessage) {
 		n.NodeMessageQueueOut <- *NewCtrlMsgFromString("Create ring and set table[0] and pre to "+n.Info.IpAddress+":"+strconv.Itoa(int(n.Info.Port)), 1)
 		break
 	case "join":
-		//n.Join()
+		n.Join(msg.name[1])
+		break
+	case "dump":
+		n.nodeFingerTable.DumpFingerTable()
 		break
 	case "ping":
 		ret := n.rpcModule.ping(",fuck", msg.name[1])
