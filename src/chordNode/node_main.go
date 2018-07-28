@@ -48,6 +48,7 @@ type RingNode struct {
 	currentMsg          ctrlMessage
 	data                map[KeyType]ValueType
 	nodeFingerTable     *fingerTable
+	nodeSuccessorList   *successorList
 	rpcModule           *rpcServer
 	UserMessageQueueIn  chan ctrlMessage
 	NodeMessageQueueOut chan ctrlMessage
@@ -70,18 +71,17 @@ func (n *RingNode) DumpData() {
 }
 
 // if i between a and b with a < b
-func Between(a *big.Int, b *big.Int, i *big.Int) bool {
-	if a.Cmp(b) != 1 {
-		return (a.Cmp(i) == -1 && b.Cmp(i) == 1)
+func Between(a *big.Int, i *big.Int, b *big.Int, inclusive bool) bool {
+	if b.Cmp(a) > 0 {
+		return a.Cmp(i) < 0 && i.Cmp(b) < 0 || (inclusive && i.Cmp(b) == 0)
 	} else {
-		nb := new(big.Int).Add(b, new(big.Int).Exp(big.NewInt(2), big.NewInt(160), nil))
-		return (a.Cmp(i) == -1 && nb.Cmp(i) == 1)
+		return a.Cmp(i) < 0 || i.Cmp(b) < 0 || (inclusive && i.Cmp(b) == 0)
 	}
 }
 
-func (n *RingNode) closetPrecedingNode(v HashedValue) *NodeInfo {
+func (n *RingNode) closestPrecedingNode(v HashedValue) *NodeInfo {
 	for pos := HASHED_ADDRESS_LENGTH - 1; pos >= 0; pos -= 1 {
-		if Between(&n.Info.HashedAddress, &v.V, &n.nodeFingerTable.table[pos].remoteNode.HashedAddress) {
+		if Between(&n.Info.HashedAddress, &n.nodeFingerTable.table[pos].remoteNode.HashedAddress, &v.V, false) {
 			return &n.nodeFingerTable.table[pos].remoteNode
 		}
 	}
@@ -104,6 +104,7 @@ func NewNode(port int32) *RingNode {
 	ret.NodeMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
 	ret.nodeFingerTable = NewFingerTable()
 	ret.IfStop = make(chan uint8, 1)
+	ret.nodeSuccessorList = newSuccessorList()
 	ret.rpcModule = newRpcServer(ret)
 	ret.rpcModule.server.RegisterName("RingRPC", ret.rpcModule.service)
 	return ret
@@ -179,6 +180,8 @@ func (n *RingNode) Create() {
 		n.nodeFingerTable.table[pos].remoteNode = n.Info
 		n.nodeFingerTable.table[pos].HashedStartAddress = *AddPowerOfTwo(&n.Info.HashedAddress, pos)
 	}
+	n.nodeSuccessorList.length += 1
+	n.nodeSuccessorList.list[0] = n.Info
 	n.InRing = true
 }
 
@@ -189,7 +192,9 @@ func (n *RingNode) Quit() {
 func (n *RingNode) Join(addrWithPort string) {
 	n.nodeFingerTable.predecessor.IpAddress = ""
 	n.nodeFingerTable.predecessor.Port = -1
-	n.rpcModule.join(addrWithPort)
+	if n.rpcModule.join(addrWithPort) {
+		n.InRing = true
+	}
 }
 
 func (n *RingNode) Run(wg *sync.WaitGroup) {

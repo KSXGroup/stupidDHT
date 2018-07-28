@@ -22,6 +22,25 @@ type fingerTable struct {
 	predecessor NodeInfo
 }
 
+type successorList struct {
+	list   [HASHED_ADDRESS_LENGTH]NodeInfo
+	length uint8
+}
+
+func newNodeValue(_v *NodeInfo, _f *NodeInfo, _s bool) *NodeValue {
+	ret := new(NodeValue)
+	ret.V = *_v
+	ret.From = *_f
+	ret.Status = _s
+	return ret
+}
+
+func newSuccessorList() *successorList {
+	ret := new(successorList)
+	ret.length = 0
+	return ret
+}
+
 func NewFingerTable() *fingerTable {
 	ret := new(fingerTable)
 	return ret
@@ -47,6 +66,24 @@ func (nif *NodeInfo) Print() {
 	} else {
 		fmt.Println("[None]")
 	}
+}
+
+func (nif *NodeInfo) Equal(o *NodeInfo) bool {
+	if nif.Port == o.Port && nif.IpAddress == o.IpAddress {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (nif *NodeInfo) GetAddrWithPort() string {
+	return nif.IpAddress + ":" + strconv.Itoa(int(nif.Port))
+}
+
+func (nif *NodeInfo) Reset() {
+	nif.IpAddress = ""
+	nif.Port = 0
+	nif.HashedAddress.SetInt64(0)
 }
 
 func (tif *tableInfo) Print() {
