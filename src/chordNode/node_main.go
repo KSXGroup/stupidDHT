@@ -15,6 +15,8 @@ const (
 	SERVER_TIME_OUT       int64  = 6e8
 	MAX_QUEUE_LEN         int32  = 1024
 	HASHED_ADDRESS_LENGTH int32  = 160
+	FIX_FINGER_INTERVAL   int32  = 10
+	STABILIZE_INTERVAL    int32  = 10
 	STOP                  uint8  = 0
 )
 
@@ -73,7 +75,7 @@ func (n *RingNode) DumpData() {
 // if i between a and b with a < b
 func Between(a *big.Int, i *big.Int, b *big.Int, inclusive bool) bool {
 	if b.Cmp(a) > 0 {
-		return a.Cmp(i) < 0 && i.Cmp(b) < 0 || (inclusive && i.Cmp(b) == 0)
+		return (a.Cmp(i) < 0 && i.Cmp(b) < 0) || (inclusive && i.Cmp(b) == 0)
 	} else {
 		return a.Cmp(i) < 0 || i.Cmp(b) < 0 || (inclusive && i.Cmp(b) == 0)
 	}
@@ -138,8 +140,6 @@ func (n *RingNode) handleMsg(msg *ctrlMessage) {
 		}
 		defer func() {
 			n.IfStop <- STOP
-			close(n.NodeMessageQueueOut)
-			close(n.UserMessageQueueIn)
 			PrintLog("[STOP INFO]Node Stop")
 		}()
 		break
@@ -202,12 +202,20 @@ func (n *RingNode) Join(addrWithPort string) {
 }
 
 func (n *RingNode) Run(wg *sync.WaitGroup) {
+	defer func() {
+		n.rpcModule.listener.Close()
+		close(n.NodeMessageQueueOut)
+		close(n.UserMessageQueueIn)
+		wg.Done()
+	}()
 	var wgi sync.WaitGroup
 	n.rpcModule.startListen()
 	go n.rpcModule.server.Accept(n.rpcModule.listener)
 	wgi.Add(1)
 	go n.ProcessUserCommand(&wgi)
+	wgi.Add(1)
+	go n.rpcModule.stabilize(&wgi)
+	/*wgi.Add(1)
+	go n.rpcModule.fixFinger(&wgi)*/
 	wgi.Wait()
-	defer func() { n.rpcModule.listener.Close() }()
-	wg.Done()
 }

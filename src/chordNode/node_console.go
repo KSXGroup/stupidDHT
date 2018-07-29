@@ -59,7 +59,7 @@ func (c *NodeConsole) processInput(ipt []string) int {
 			if len(mmsg.name) == 2 {
 				c.node.UserMessageQueueIn <- mmsg
 			} else {
-				fmt.Println(pingHelp)
+				fmt.Println(pingHelp + "\n")
 			}
 			return 1
 		case "help":
@@ -69,10 +69,9 @@ func (c *NodeConsole) processInput(ipt []string) int {
 			if len(mmsg.name) == 2 {
 				c.node.UserMessageQueueIn <- mmsg
 			} else {
-				fmt.Print(joinHelp)
-				return 1
+				fmt.Println(joinHelp)
 			}
-
+			return 1
 		case "quit":
 			c.node.UserMessageQueueIn <- mmsg
 			return 2
