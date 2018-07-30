@@ -144,7 +144,7 @@ func (h *rpcServer) doFixFinger() {
 		//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("node stop or not in ring,fixfinger stop", 0)
 		return
 	}
-	h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Start fix finger "+strconv.Itoa(h.currentFix), 0)
+	//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Start fix finger "+strconv.Itoa(h.currentFix), 0)
 	var ret NodeValue
 	var hv HashedValue
 	hv.From = h.node.Info
@@ -155,7 +155,7 @@ func (h *rpcServer) doFixFinger() {
 		return
 	} else {
 		h.node.nodeFingerTable.table[h.currentFix].remoteNode = ret.V
-		h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("update finger "+strconv.Itoa(h.currentFix)+"to"+ret.V.GetAddrWithPort(), 0)
+		//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("update finger "+strconv.Itoa(h.currentFix)+"to"+ret.V.GetAddrWithPort(), 0)
 	}
 	if int32(h.currentFix+1) == HASHED_ADDRESS_LENGTH {
 		h.currentFix = 0
@@ -249,7 +249,7 @@ func (h *rpcServer) doStabilize() {
 				h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Notify Call fail: "+h.node.nodeSuccessorList.list[0].GetAddrWithPort()+":"+rerr.Error(), 0)
 			} else {
 				cl.Close()
-				h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Notify Success to: "+h.node.nodeSuccessorList.list[0].GetAddrWithPort(), 0)
+				//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Notify Success to: "+h.node.nodeSuccessorList.list[0].GetAddrWithPort(), 0)
 			}
 		}
 
@@ -362,13 +362,13 @@ func (h *RpcServiceModule) Notify(arg NodeValue, reply *Greet) (err error) {
 		err = errors.New("Why you give me a FUCKING EMPTY ADDRESS?")
 		return err
 	} else {
-		PrintLog("ReceiveNotify")
+		//PrintLog("ReceiveNotify")
 		pre := hashAddressFromNodeInfo(&h.node.nodeFingerTable.predecessor)
 		myargv := hashAddressFromNodeInfo(&arg.V)
 		self := hashAddressFromNodeInfo(&h.node.Info)
 		if h.node.nodeFingerTable.predecessor.IpAddress == "" || Between(&pre, &myargv, &self, false) {
 			h.node.nodeFingerTable.predecessor = arg.V
-			h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Receive Notify, update pre to:"+arg.V.GetAddrWithPort(), 0)
+			//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Receive Notify, update pre to:"+arg.V.GetAddrWithPort(), 0)
 		}
 		reply.Name = "Success"
 		reply.From = h.node.Info
