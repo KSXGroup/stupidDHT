@@ -34,9 +34,12 @@ func (c *NodeConsole) PrintHelp() {
 
 func (c *NodeConsole) processNodeInfo(wg *sync.WaitGroup) {
 	var nodeMsg ctrlMessage
+	var ok bool
 	for {
-		nodeMsg = <-c.node.NodeMessageQueueOut
-		PrintLog("[NODE INFO]" + nodeMsg.name[0])
+		nodeMsg, ok = <-c.node.NodeMessageQueueOut
+		if ok && len(nodeMsg.name) > 0 {
+			PrintLog("[NODE INFO]" + nodeMsg.name[0])
+		}
 		if len(c.node.IfStop) > 0 {
 			break
 		}
@@ -76,6 +79,12 @@ func (c *NodeConsole) processInput(ipt []string) int {
 			c.node.UserMessageQueueIn <- mmsg
 			return 2
 		case "dump":
+			c.node.UserMessageQueueIn <- mmsg
+			return 1
+		case "dumpsucc":
+			c.node.UserMessageQueueIn <- mmsg
+			return 1
+		case "nf":
 			c.node.UserMessageQueueIn <- mmsg
 			return 1
 		default:

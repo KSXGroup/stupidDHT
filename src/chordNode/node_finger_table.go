@@ -18,12 +18,12 @@ type tableInfo struct {
 }
 
 type fingerTable struct {
-	table       [HASHED_ADDRESS_LENGTH]tableInfo
+	table       []tableInfo
 	predecessor NodeInfo
 }
 
 type successorList struct {
-	list   [HASHED_ADDRESS_LENGTH]NodeInfo
+	list   []NodeInfo
 	length uint8
 }
 
@@ -43,12 +43,14 @@ func newNodeValue(_v *NodeInfo, _f *NodeInfo, _s bool) *NodeValue {
 
 func newSuccessorList() *successorList {
 	ret := new(successorList)
+	ret.list = make([]NodeInfo, HASHED_ADDRESS_LENGTH)
 	ret.length = 0
 	return ret
 }
 
 func NewFingerTable() *fingerTable {
 	ret := new(fingerTable)
+	ret.table = make([]tableInfo, HASHED_ADDRESS_LENGTH)
 	return ret
 }
 

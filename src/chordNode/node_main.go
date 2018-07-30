@@ -15,7 +15,7 @@ const (
 	SERVER_TIME_OUT       int64  = 6e8
 	MAX_QUEUE_LEN         int32  = 1024
 	HASHED_ADDRESS_LENGTH int32  = 160
-	FIX_FINGER_INTERVAL   int32  = 10
+	FIX_FINGER_INTERVAL   int32  = 1
 	STABILIZE_INTERVAL    int32  = 10
 	STOP                  uint8  = 0
 )
@@ -72,7 +72,6 @@ func (n *RingNode) DumpData() {
 	}
 }
 
-// if i between a and b with a < b
 func Between(a *big.Int, i *big.Int, b *big.Int, inclusive bool) bool {
 	if b.Cmp(a) > 0 {
 		return (a.Cmp(i) < 0 && i.Cmp(b) < 0) || (inclusive && i.Cmp(b) == 0)
@@ -81,13 +80,13 @@ func Between(a *big.Int, i *big.Int, b *big.Int, inclusive bool) bool {
 	}
 }
 
-func (n *RingNode) closestPrecedingNode(v HashedValue) *NodeInfo {
-	for pos := HASHED_ADDRESS_LENGTH - 1; pos >= 0; pos -= 1 {
-		if Between(&n.Info.HashedAddress, &n.nodeFingerTable.table[pos].remoteNode.HashedAddress, &v.V, false) {
-			return &n.nodeFingerTable.table[pos].remoteNode
+func (n *RingNode) closestPrecedingNode(v HashedValue) NodeInfo {
+	for pos := int((HASHED_ADDRESS_LENGTH - 1)); pos >= 0; pos -= 1 {
+		if (n.nodeFingerTable.table[pos].remoteNode.IpAddress != "") && (Between(&(n.Info.HashedAddress), &(n.nodeFingerTable.table[pos].remoteNode.HashedAddress), &v.V, false)) {
+			return n.nodeFingerTable.table[pos].remoteNode
 		}
 	}
-	return &n.Info
+	return n.Info
 }
 
 func hashAddress(ip string, port int32) big.Int {
@@ -106,6 +105,9 @@ func NewNode(port int32) *RingNode {
 	ret.UserMessageQueueIn = make(chan ctrlMessage, MAX_QUEUE_LEN)
 	ret.NodeMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
 	ret.nodeFingerTable = NewFingerTable()
+	for pos, _ := range ret.nodeFingerTable.table {
+		ret.nodeFingerTable.table[pos].HashedStartAddress = *AddPowerOfTwo(&ret.Info.HashedAddress, pos)
+	}
 	ret.IfStop = make(chan uint8, 1)
 	ret.nodeSuccessorList = newSuccessorList()
 	ret.rpcModule = newRpcServer(ret)
@@ -127,6 +129,10 @@ func (n *RingNode) getIp() string {
 		}
 	}
 	return ipAddress
+}
+
+func (n *RingNode) printSuccessor() {
+	n.nodeSuccessorList.list[0].Print()
 }
 
 func (n *RingNode) handleMsg(msg *ctrlMessage) {
@@ -159,6 +165,12 @@ func (n *RingNode) handleMsg(msg *ctrlMessage) {
 			n.NodeMessageQueueOut <- *NewCtrlMsgFromString(ret, 0)
 		}
 		break
+	case "dumpsucc":
+		n.printSuccessor()
+		break
+	case "nf":
+		n.Info.Print()
+		break
 	default:
 	}
 	//TODO
@@ -180,10 +192,7 @@ func (n *RingNode) ProcessUserCommand(wg *sync.WaitGroup) {
 func (n *RingNode) Create() {
 	n.nodeFingerTable.predecessor.IpAddress = ""
 	n.nodeFingerTable.predecessor.Port = -1
-	for pos, _ := range n.nodeFingerTable.table {
-		n.nodeFingerTable.table[pos].remoteNode = n.Info
-		n.nodeFingerTable.table[pos].HashedStartAddress = *AddPowerOfTwo(&n.Info.HashedAddress, pos)
-	}
+	n.nodeFingerTable.table[0].remoteNode = n.Info
 	n.nodeSuccessorList.length += 1
 	n.nodeSuccessorList.list[0] = n.Info
 	n.InRing = true
@@ -215,7 +224,7 @@ func (n *RingNode) Run(wg *sync.WaitGroup) {
 	go n.ProcessUserCommand(&wgi)
 	wgi.Add(1)
 	go n.rpcModule.stabilize(&wgi)
-	/*wgi.Add(1)
-	go n.rpcModule.fixFinger(&wgi)*/
+	wgi.Add(1)
+	go n.rpcModule.fixFinger(&wgi)
 	wgi.Wait()
 }
