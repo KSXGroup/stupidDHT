@@ -173,7 +173,7 @@ func (h *rpcServer) join(addrWithPort string) bool {
 	} else {
 		var arg HashedValue
 		var ret NodeValue
-		arg.V = h.node.Info.HashedAddress
+		arg.V = hashAddressFromNodeInfo(&h.node.Info)
 		arg.From = h.node.Info
 		cl := rpc.NewClient(*tconn)
 		rerr := cl.Call("RingRPC.FindSuccessorInit", &arg, &ret)
@@ -224,7 +224,7 @@ func (h *rpcServer) doStabilize() {
 		return
 	} else {
 		arg.From = h.node.Info
-		arg.V = h.node.Info.HashedAddress
+		arg.V = hashAddressFromNodeInfo(&h.node.Info)
 		cl := rpc.NewClient(*tconn)
 		rerr := cl.Call("RingRPC.GetPredecessor", &arg, &reply)
 		if rerr != nil {
@@ -232,9 +232,9 @@ func (h *rpcServer) doStabilize() {
 			h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Call remote GetPredecssor fail: "+target.GetAddrWithPort(), 0)
 			return
 		} else {
-			n := h.node.Info.HashedAddress
-			x := reply.HashedAddress
-			successor := h.node.nodeSuccessorList.list[0].HashedAddress
+			n := hashAddressFromNodeInfo(&h.node.Info)
+			x := hashAddressFromNodeInfo(&reply)
+			successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[0])
 			if reply.IpAddress != "" && Between(&n, &x, &successor, false) {
 				h.node.nodeSuccessorList.list[0] = reply
 				h.node.nodeFingerTable.table[0].remoteNode = reply
@@ -262,7 +262,6 @@ func (h *RpcServiceModule) GetPredecessor(p HashedValue, ret *NodeInfo) (err err
 		return err
 	} else {
 		ret.IpAddress = h.node.nodeFingerTable.predecessor.IpAddress
-		ret.HashedAddress = h.node.nodeFingerTable.predecessor.HashedAddress
 		ret.Port = h.node.nodeFingerTable.predecessor.Port
 		return nil
 	}
@@ -274,8 +273,8 @@ func (h *RpcServiceModule) FindSuccessor(p HashedValue, ret *NodeValue) (err err
 		return
 	}
 	PrintLog("New FindSucc request from" + p.From.GetAddrWithPort())
-	n := h.node.Info.HashedAddress
-	successor := h.node.nodeSuccessorList.list[0].HashedAddress
+	n := hashAddressFromNodeInfo(&h.node.Info)
+	successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[0])
 	if p.From.Port == 2222 {
 		fmt.Println(n.String())
 		fmt.Println(p.V.String())
@@ -296,9 +295,9 @@ func (h *RpcServiceModule) FindSuccessor(p HashedValue, ret *NodeValue) (err err
 
 func (h *RpcServiceModule) FindSuccessorInit(p HashedValue, ret *NodeValue) (err error) {
 	tp := p
-	n := &h.node.Info.HashedAddress
-	successor := &h.node.nodeSuccessorList.list[0].HashedAddress
-	if Between(n, &tp.V, successor, true) {
+	n := hashAddressFromNodeInfo(&h.node.Info)
+	successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[0])
+	if Between(&n, &tp.V, &successor, true) {
 		ret.V = h.node.nodeSuccessorList.list[0]
 		ret.Status = true
 		ret.From = h.node.Info
@@ -364,7 +363,10 @@ func (h *RpcServiceModule) Notify(arg NodeValue, reply *Greet) (err error) {
 		return err
 	} else {
 		PrintLog("ReceiveNotify")
-		if h.node.nodeFingerTable.predecessor.IpAddress == "" || Between(&h.node.nodeFingerTable.predecessor.HashedAddress, &arg.V.HashedAddress, &h.node.Info.HashedAddress, false) {
+		pre := hashAddressFromNodeInfo(&h.node.nodeFingerTable.predecessor)
+		myargv := hashAddressFromNodeInfo(&arg.V)
+		self := hashAddressFromNodeInfo(&h.node.Info)
+		if h.node.nodeFingerTable.predecessor.IpAddress == "" || Between(&pre, &myargv, &self, false) {
 			h.node.nodeFingerTable.predecessor = arg.V
 			h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Receive Notify, update pre to:"+arg.V.GetAddrWithPort(), 0)
 		}

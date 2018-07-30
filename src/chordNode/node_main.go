@@ -82,7 +82,9 @@ func Between(a *big.Int, i *big.Int, b *big.Int, inclusive bool) bool {
 
 func (n *RingNode) closestPrecedingNode(v HashedValue) NodeInfo {
 	for pos := int((HASHED_ADDRESS_LENGTH - 1)); pos >= 0; pos -= 1 {
-		if (n.nodeFingerTable.table[pos].remoteNode.IpAddress != "") && (Between(&(n.Info.HashedAddress), &(n.nodeFingerTable.table[pos].remoteNode.HashedAddress), &v.V, false)) {
+		self := hashAddressFromNodeInfo(&n.Info)
+		rmtnd := hashAddressFromNodeInfo(&n.nodeFingerTable.table[pos].remoteNode)
+		if (n.nodeFingerTable.table[pos].remoteNode.IpAddress != "") && Between(&self, &rmtnd, &v.V, false) {
 			return n.nodeFingerTable.table[pos].remoteNode
 		}
 	}
@@ -98,6 +100,12 @@ func hashAddress(ip string, port int32) big.Int {
 	return hashModAddress
 }
 
+func hashAddressFromNodeInfo(nif *NodeInfo) big.Int {
+	ip := nif.IpAddress
+	port := nif.Port
+	return hashAddress(ip, port)
+}
+
 func NewNode(port int32) *RingNode {
 	var ret = new(RingNode)
 	ret.Info = *NewNodeInfo(ret.getIp(), port)
@@ -105,8 +113,9 @@ func NewNode(port int32) *RingNode {
 	ret.UserMessageQueueIn = make(chan ctrlMessage, MAX_QUEUE_LEN)
 	ret.NodeMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
 	ret.nodeFingerTable = NewFingerTable()
+	tmpHash := hashAddressFromNodeInfo(&ret.Info)
 	for pos, _ := range ret.nodeFingerTable.table {
-		ret.nodeFingerTable.table[pos].HashedStartAddress = *AddPowerOfTwo(&ret.Info.HashedAddress, pos)
+		ret.nodeFingerTable.table[pos].HashedStartAddress = *AddPowerOfTwo(&tmpHash, pos)
 	}
 	ret.IfStop = make(chan uint8, 1)
 	ret.nodeSuccessorList = newSuccessorList()
@@ -177,7 +186,8 @@ func (n *RingNode) handleMsg(msg *ctrlMessage) {
 }
 
 func (n *RingNode) ProcessUserCommand(wg *sync.WaitGroup) {
-	welmsg := NewCtrlMsgFromString("The node start on ip "+n.Info.IpAddress+":"+strconv.Itoa(int(n.Info.Port))+" with hashed addresses:"+n.Info.HashedAddress.String(), 1)
+	nfh := hashAddressFromNodeInfo(&n.Info)
+	welmsg := NewCtrlMsgFromString("The node start on ip "+n.Info.IpAddress+":"+strconv.Itoa(int(n.Info.Port))+" with hashed addresses:"+nfh.String(), 1)
 	n.NodeMessageQueueOut <- *welmsg
 	for {
 		if len(n.IfStop) > 0 {

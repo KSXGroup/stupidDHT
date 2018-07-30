@@ -7,9 +7,8 @@ import (
 )
 
 type NodeInfo struct {
-	IpAddress     string
-	Port          int32
-	HashedAddress big.Int
+	IpAddress string
+	Port      int32
 }
 
 type tableInfo struct {
@@ -58,7 +57,6 @@ func NewNodeInfo(ip string, port int32) *NodeInfo {
 	ret := new(NodeInfo)
 	ret.IpAddress = ip
 	ret.Port = port
-	ret.HashedAddress = hashAddress(ip, port)
 	return ret
 }
 
@@ -70,7 +68,7 @@ func AddPowerOfTwo(toAdd *big.Int, power int) *big.Int {
 
 func (nif *NodeInfo) Print() {
 	if nif.IpAddress != "" {
-		fmt.Println(nif.IpAddress + ":" + strconv.Itoa(int(nif.Port)) + " " + nif.HashedAddress.String())
+		fmt.Println(nif.IpAddress + ":" + strconv.Itoa(int(nif.Port)))
 	} else {
 		fmt.Println("[None]")
 	}
@@ -91,7 +89,6 @@ func (nif *NodeInfo) GetAddrWithPort() string {
 func (nif *NodeInfo) Reset() {
 	nif.IpAddress = ""
 	nif.Port = 0
-	nif.HashedAddress.SetInt64(0)
 }
 
 func (tif *tableInfo) Print() {
