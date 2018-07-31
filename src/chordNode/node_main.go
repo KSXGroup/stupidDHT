@@ -233,5 +233,6 @@ func (n *RingNode) Run(wg *sync.WaitGroup) {
 	go n.rpcModule.stabilize(&wgi)
 	wgi.Add(1)
 	go n.rpcModule.fixFinger(&wgi)
+	go n.rpcModule.checkPredecessor()
 	wgi.Wait()
 }

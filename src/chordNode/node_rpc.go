@@ -128,7 +128,7 @@ func (h *rpcServer) find(k KeyType) *ValueType {
 
 func (h *rpcServer) checkPredecessor() {
 	var cnt int = 0
-	for len(h.node.IfStop) > 0 {
+	for len(h.node.IfStop) == 0 {
 		time.Sleep(time.Second * 1)
 		cnt++
 		if cnt == int(CHECKPRE_INTERVAL) {
@@ -142,6 +142,7 @@ func (h *rpcServer) doCheckPredecessor() {
 	if len(h.node.IfStop) > 0 {
 		return
 	}
+	PrintLog("check pre")
 	if h.ping("a", h.node.nodeFingerTable.predecessor.GetAddrWithPort()) == "" {
 		h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Predecessor fail, set to null", 0)
 		h.node.nodeFingerTable.predecessor.Reset()
@@ -199,6 +200,7 @@ func (h *rpcServer) join(addrWithPort string) bool {
 		arg.V = hashAddressFromNodeInfo(&h.node.Info)
 		arg.From = h.node.Info
 		cl := rpc.NewClient(*tconn)
+		ptr := h.node.nodeSuccessorList.successorPointer
 		rerr := cl.Call("RingRPC.FindSuccessorInit", &arg, &ret)
 		if rerr != nil {
 			cl.Close()
@@ -206,9 +208,9 @@ func (h *rpcServer) join(addrWithPort string) bool {
 			return false
 		} else {
 			cl.Close()
-			h.node.nodeSuccessorList.list[0] = ret.V
+			h.node.nodeSuccessorList.list[ptr] = ret.V
 			h.node.nodeFingerTable.table[0].remoteNode = ret.V
-			h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Update successor[0]: "+ret.V.GetAddrWithPort(), 0)
+			h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Update successor[ptr]: "+ret.V.GetAddrWithPort(), 0)
 			return true
 		}
 	}
@@ -234,69 +236,90 @@ func (h *rpcServer) doStabilize() {
 		//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Node stop or not in ring, stab exit", 0)
 		return
 	}
-	//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Start stabilize", 0)
-	target := h.node.nodeSuccessorList.list[0]
+	h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Start stabilize", 0)
 	var arg HashedValue
 	var reply NodeInfo
 	var arg1 NodeValue
 	var reply1 Greet
 	var argSucc Greet
 	var replySucc SuccListInfo
+	var target *NodeInfo
+	var tconn *net.Conn = nil
+	ptr := h.node.nodeSuccessorList.successorPointer
 	//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Do start stab", 0)
-	tconn := h.rpcDialWithNodeInfo(&target)
-	if tconn == nil {
-		PrintLog("Dial fail when stablize")
-		return
-	} else {
-		arg.From = h.node.Info
-		arg.V = hashAddressFromNodeInfo(&h.node.Info)
-		cl := rpc.NewClient(*tconn)
-		rerr := cl.Call("RingRPC.GetPredecessor", &arg, &reply)
-		if rerr != nil {
-			cl.Close()
-			h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Call remote GetPredecssor fail: "+target.GetAddrWithPort(), 0)
+	for {
+		target = &h.node.nodeSuccessorList.list[h.node.nodeSuccessorList.successorPointer]
+		tconn = h.rpcDialWithNodeInfo(target)
+		if tconn != nil {
+			break
+		} else if h.node.nodeSuccessorList.successorPointer == MAX_SUCCESSORLIST_LEN-1 || h.node.nodeSuccessorList.list[h.node.nodeSuccessorList.successorPointer].IpAddress == "" {
+			h.node.nodeSuccessorList.successorPointer = 0
+			//TODO There is few possibility, let it stop temperoraily
+			PrintLog("All Succ Fail, node stop")
+			h.node.IfStop <- STOP
 			return
 		} else {
-			n := hashAddressFromNodeInfo(&h.node.Info)
-			x := hashAddressFromNodeInfo(&reply)
-			successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[0])
-			if reply.IpAddress != "" && Between(&n, &x, &successor, false) {
-				cl.Close()
-				if tconn != nil {
-					(*tconn).Close()
-				}
-				h.node.nodeSuccessorList.list[0] = reply
-				h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Update successor: "+reply.GetAddrWithPort(), 0)
-				tconn = h.node.rpcModule.rpcDialWithNodeInfo(&reply)
-				if tconn == nil {
-					PrintLog("Dial fail when stab when copy successor's succ list")
-					return
-				}
-				argSucc.From = h.node.Info
-				cl = rpc.NewClient(*tconn)
-				serr := cl.Call("RingRPC.GetSuccessorList", &argSucc, &replySucc)
-				if serr != nil {
-					h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Copy successor list fail"+serr.Error()+" "+reply.GetAddrWithPort(), 0)
-					return
-				}
+			PrintLog("Remove first entry")
+			h.node.nodeSuccessorList.DumpSuccessorList()
+			for i := 0; i < int(MAX_SUCCESSORLIST_LEN-1); i += 1 {
+				h.node.nodeSuccessorList.list[i] = h.node.nodeSuccessorList.list[i+1]
+			}
+			h.node.nodeSuccessorList.list[int(MAX_SUCCESSORLIST_LEN-1)].Reset()
+			h.node.nodeSuccessorList.DumpSuccessorList()
+		}
+	}
+	arg.From = h.node.Info
+	arg.V = hashAddressFromNodeInfo(&h.node.Info)
+	cl := rpc.NewClient(*tconn)
+	rerr := cl.Call("RingRPC.GetPredecessor", &arg, &reply)
+	if rerr != nil {
+		cl.Close()
+		h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Call remote GetPredecssor fail: "+target.GetAddrWithPort(), 0)
+		return
+	} else {
+		n := hashAddressFromNodeInfo(&h.node.Info)
+		x := hashAddressFromNodeInfo(&reply)
+		successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[ptr])
+		if reply.IpAddress != "" && Between(&n, &x, &successor, false) {
+			cl.Close()
+			if tconn != nil {
+				(*tconn).Close()
+			}
+			tconn = nil
+			h.node.nodeSuccessorList.list[0] = reply
+			h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Update successor: "+reply.GetAddrWithPort(), 0)
+		}
+		if h.node.nodeSuccessorList.list[ptr].IpAddress != "" {
+			tconn = h.node.rpcModule.rpcDialWithNodeInfo(&h.node.nodeSuccessorList.list[ptr])
+			if tconn == nil {
+				PrintLog("Dial fail when stab when copy successor's succ list")
+				return
+			}
+			argSucc.From = h.node.Info
+			cl = rpc.NewClient(*tconn)
+			serr := cl.Call("RingRPC.GetSuccessorList", &argSucc, &replySucc)
+			if serr != nil {
+				h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Copy successor list fail"+serr.Error()+" "+h.node.nodeSuccessorList.list[ptr].GetAddrWithPort(), 0)
+			} else {
 				for i := 1; i < int(MAX_SUCCESSORLIST_LEN); i += 1 {
 					h.node.nodeSuccessorList.list[i] = replySucc.SuccList[i-1]
 				}
-				h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Copy successor list success"+" "+reply.GetAddrWithPort(), 0)
-			}
-			arg1.From = h.node.Info
-			arg1.V = h.node.Info
-			//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Call notify", 0)
-			rerr = cl.Call("RingRPC.Notify", &arg1, &reply1)
-			if rerr != nil {
-				cl.Close()
-				h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Notify Call fail: "+h.node.nodeSuccessorList.list[0].GetAddrWithPort()+":"+rerr.Error(), 0)
-			} else {
-				cl.Close()
-				//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Notify Success to: "+h.node.nodeSuccessorList.list[0].GetAddrWithPort(), 0)
+				h.node.nodeSuccessorList.successorPointer = 0
+				h.node.nodeSuccessorList.DumpSuccessorList()
+				h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Copy successor list success"+" "+h.node.nodeSuccessorList.list[ptr].GetAddrWithPort(), 0)
 			}
 		}
-
+		arg1.From = h.node.Info
+		arg1.V = h.node.Info
+		//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Call notify", 0)
+		rerr = cl.Call("RingRPC.Notify", &arg1, &reply1)
+		if rerr != nil {
+			cl.Close()
+			h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Notify Call fail: "+h.node.nodeSuccessorList.list[ptr].GetAddrWithPort()+":"+rerr.Error(), 0)
+		} else {
+			cl.Close()
+			//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Notify Success to: "+h.node.nodeSuccessorList.list[ptr].GetAddrWithPort(), 0)
+		}
 	}
 }
 
@@ -318,9 +341,10 @@ func (h *RpcServiceModule) FindSuccessor(p HashedValue, ret *NodeValue) (err err
 	}
 	PrintLog("New FindSucc request from" + p.From.GetAddrWithPort())
 	n := hashAddressFromNodeInfo(&h.node.Info)
-	successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[0])
+	ptr := h.node.nodeSuccessorList.successorPointer
+	successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[ptr])
 	if Between(&n, &p.V, &successor, true) {
-		ret.V = h.node.nodeSuccessorList.list[0]
+		ret.V = h.node.nodeSuccessorList.list[ptr]
 		ret.From = h.node.Info
 		ret.Status = true
 		return
@@ -339,9 +363,10 @@ func (h *RpcServiceModule) FindSuccessorInit(p HashedValue, ret *NodeValue) (err
 	}
 	tp := p
 	n := hashAddressFromNodeInfo(&h.node.Info)
-	successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[0])
+	ptr := h.node.nodeSuccessorList.successorPointer
+	successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[ptr])
 	if Between(&n, &tp.V, &successor, true) {
-		ret.V = h.node.nodeSuccessorList.list[0]
+		ret.V = h.node.nodeSuccessorList.list[ptr]
 		ret.Status = true
 		ret.From = h.node.Info
 		return
@@ -361,14 +386,14 @@ func (h *RpcServiceModule) FindSuccessorInit(p HashedValue, ret *NodeValue) (err
 				/*if h.node.rpcModule.currentFix == 158 {
 					reply.V.Print()
 					reply.From.Print()
-					h.node.nodeSuccessorList.list[0].Print()
+					h.node.nodeSuccessorList.list[ptr].Print()
 					h.node.nodeFingerTable.DumpFingerTable()
 				}*/
 				rerr := cl.Call("RingRPC.FindSuccessor", &tp, reply)
 				/*if h.node.rpcModule.currentFix == 158 {
 					reply.V.Print()
 					reply.From.Print()
-					h.node.nodeSuccessorList.list[0].Print()
+					h.node.nodeSuccessorList.list[ptr].Print()
 					h.node.nodeFingerTable.DumpFingerTable()
 				}*/
 				if rerr != nil {
@@ -395,7 +420,7 @@ func (h *RpcServiceModule) GetSuccessorList(p Greet, ret *SuccListInfo) (err err
 		err = errors.New("Why you give me a FUCKING EMPTY ADDRESS?")
 		return err
 	}
-	for i := 0; i < int(MAX_SUCCESSORLIST_LEN); i += 1 {
+	for i := h.node.nodeSuccessorList.successorPointer; i < MAX_SUCCESSORLIST_LEN; i += 1 {
 		ret.SuccList[i] = h.node.nodeSuccessorList.list[i]
 	}
 	return nil
