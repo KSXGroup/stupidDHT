@@ -22,8 +22,7 @@ type fingerTable struct {
 }
 
 type successorList struct {
-	list   []NodeInfo
-	length uint8
+	list []NodeInfo
 }
 
 type NodeValue struct {
@@ -43,7 +42,6 @@ func newNodeValue(_v *NodeInfo, _f *NodeInfo, _s bool) *NodeValue {
 func newSuccessorList() *successorList {
 	ret := new(successorList)
 	ret.list = make([]NodeInfo, HASHED_ADDRESS_LENGTH)
-	ret.length = 0
 	return ret
 }
 
@@ -96,18 +94,36 @@ func (tif *tableInfo) Print() {
 	tif.remoteNode.Print()
 }
 
+func (slst *successorList) DumpSuccessorList() {
+	for i := 0; i < int(MAX_SUCCESSORLIST_LEN); i += 1 {
+		if slst.list[i].IpAddress == "" {
+			break
+		}
+		fmt.Printf("#%d", i)
+		slst.list[i].Print()
+	}
+}
+
 func (f *fingerTable) DumpFingerTable() {
 	fmt.Print("Predecessor:")
 	f.predecessor.Print()
 	if f.table[0].remoteNode.IpAddress == "" {
 		fmt.Println("There is nothing in finger table")
 	} else {
-		for i := 0; i < 160; i += 1 {
+		for i := 0; i < int(HASHED_ADDRESS_LENGTH); i += 1 {
 			if f.table[i].remoteNode.IpAddress == "" {
 				break
 			} else {
+				fmt.Printf("#%d", i)
 				f.table[i].Print()
 			}
 		}
 	}
+}
+
+func (s *successorList) pushFront(item *NodeInfo) {
+	for i := 0; i < int(MAX_SUCCESSORLIST_LEN-1); i += 1 {
+		s.list[i+1] = s.list[i]
+	}
+	s.list[0] = *item
 }

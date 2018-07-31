@@ -18,6 +18,7 @@ const (
 	FIX_FINGER_INTERVAL   int32  = 1
 	STABILIZE_INTERVAL    int32  = 10
 	CHECKPRE_INTERVAL     int32  = 5
+	MAX_SUCCESSORLIST_LEN int32  = 5
 	STOP                  uint8  = 0
 )
 
@@ -141,10 +142,6 @@ func (n *RingNode) getIp() string {
 	return ipAddress
 }
 
-func (n *RingNode) printSuccessor() {
-	n.nodeSuccessorList.list[0].Print()
-}
-
 func (n *RingNode) handleMsg(msg *ctrlMessage) {
 	tmp := NewCtrlMsgFromString("The message "+msg.name[0]+" is handled", 0)
 	//time.Sleep(1000 * time.Millisecond)
@@ -176,7 +173,7 @@ func (n *RingNode) handleMsg(msg *ctrlMessage) {
 		}
 		break
 	case "dumpsucc":
-		n.printSuccessor()
+		n.nodeSuccessorList.DumpSuccessorList()
 		break
 	case "nf":
 		n.Info.Print()
@@ -204,7 +201,6 @@ func (n *RingNode) Create() {
 	n.nodeFingerTable.predecessor.IpAddress = ""
 	n.nodeFingerTable.predecessor.Port = -1
 	n.nodeFingerTable.table[0].remoteNode = n.Info
-	n.nodeSuccessorList.length += 1
 	n.nodeSuccessorList.list[0] = n.Info
 	n.InRing = true
 }

@@ -22,6 +22,10 @@ type Greet struct {
 	From NodeInfo
 }
 
+type SuccListInfo struct {
+	SuccList [MAX_SUCCESSORLIST_LEN]NodeInfo
+}
+
 type rpcServer struct {
 	node       *RingNode
 	server     *rpc.Server
@@ -236,6 +240,8 @@ func (h *rpcServer) doStabilize() {
 	var reply NodeInfo
 	var arg1 NodeValue
 	var reply1 Greet
+	var argSucc Greet
+	var replySucc SuccListInfo
 	//h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Do start stab", 0)
 	tconn := h.rpcDialWithNodeInfo(&target)
 	if tconn == nil {
@@ -255,9 +261,28 @@ func (h *rpcServer) doStabilize() {
 			x := hashAddressFromNodeInfo(&reply)
 			successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[0])
 			if reply.IpAddress != "" && Between(&n, &x, &successor, false) {
+				cl.Close()
+				if tconn != nil {
+					(*tconn).Close()
+				}
 				h.node.nodeSuccessorList.list[0] = reply
-				h.node.nodeFingerTable.table[0].remoteNode = reply
 				h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Update successor: "+reply.GetAddrWithPort(), 0)
+				tconn = h.node.rpcModule.rpcDialWithNodeInfo(&reply)
+				if tconn == nil {
+					PrintLog("Dial fail when stab when copy successor's succ list")
+					return
+				}
+				argSucc.From = h.node.Info
+				cl = rpc.NewClient(*tconn)
+				serr := cl.Call("RingRPC.GetSuccessorList", &argSucc, &replySucc)
+				if serr != nil {
+					h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Copy successor list fail"+serr.Error()+" "+reply.GetAddrWithPort(), 0)
+					return
+				}
+				for i := 1; i < int(MAX_SUCCESSORLIST_LEN); i += 1 {
+					h.node.nodeSuccessorList.list[i] = replySucc.SuccList[i-1]
+				}
+				h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Copy successor list success"+" "+reply.GetAddrWithPort(), 0)
 			}
 			arg1.From = h.node.Info
 			arg1.V = h.node.Info
@@ -294,11 +319,6 @@ func (h *RpcServiceModule) FindSuccessor(p HashedValue, ret *NodeValue) (err err
 	PrintLog("New FindSucc request from" + p.From.GetAddrWithPort())
 	n := hashAddressFromNodeInfo(&h.node.Info)
 	successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[0])
-	if p.From.Port == 2222 {
-		fmt.Println(n.String())
-		fmt.Println(p.V.String())
-		fmt.Println(successor.String())
-	}
 	if Between(&n, &p.V, &successor, true) {
 		ret.V = h.node.nodeSuccessorList.list[0]
 		ret.From = h.node.Info
@@ -313,6 +333,10 @@ func (h *RpcServiceModule) FindSuccessor(p HashedValue, ret *NodeValue) (err err
 }
 
 func (h *RpcServiceModule) FindSuccessorInit(p HashedValue, ret *NodeValue) (err error) {
+	if h.node.InRing == false {
+		err = errors.New("Not in ring")
+		return
+	}
 	tp := p
 	n := hashAddressFromNodeInfo(&h.node.Info)
 	successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[0])
@@ -334,19 +358,19 @@ func (h *RpcServiceModule) FindSuccessorInit(p HashedValue, ret *NodeValue) (err
 				return err
 			} else {
 				cl = rpc.NewClient(*tconn)
-				if h.node.rpcModule.currentFix == 158 {
+				/*if h.node.rpcModule.currentFix == 158 {
 					reply.V.Print()
 					reply.From.Print()
 					h.node.nodeSuccessorList.list[0].Print()
 					h.node.nodeFingerTable.DumpFingerTable()
-				}
+				}*/
 				rerr := cl.Call("RingRPC.FindSuccessor", &tp, reply)
-				if h.node.rpcModule.currentFix == 158 {
+				/*if h.node.rpcModule.currentFix == 158 {
 					reply.V.Print()
 					reply.From.Print()
 					h.node.nodeSuccessorList.list[0].Print()
 					h.node.nodeFingerTable.DumpFingerTable()
-				}
+				}*/
 				if rerr != nil {
 					err = errors.New("Call remote FindSuccessor fail:" + rerr.Error())
 					cl.Close()
@@ -364,6 +388,17 @@ func (h *RpcServiceModule) FindSuccessorInit(p HashedValue, ret *NodeValue) (err
 			cl.Close()
 		}
 	}
+}
+
+func (h *RpcServiceModule) GetSuccessorList(p Greet, ret *SuccListInfo) (err error) {
+	if p.From.IpAddress == "" {
+		err = errors.New("Why you give me a FUCKING EMPTY ADDRESS?")
+		return err
+	}
+	for i := 0; i < int(MAX_SUCCESSORLIST_LEN); i += 1 {
+		ret.SuccList[i] = h.node.nodeSuccessorList.list[i]
+	}
+	return nil
 }
 
 func (h *RpcServiceModule) Ping(p Greet, ret *Greet) (err error) {
