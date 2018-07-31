@@ -99,7 +99,7 @@ func (slst *successorList) DumpSuccessorList() {
 		if slst.list[i].IpAddress == "" {
 			break
 		}
-		fmt.Printf("#%d", i)
+		fmt.Printf("#%d ", i)
 		slst.list[i].Print()
 	}
 }
@@ -114,7 +114,7 @@ func (f *fingerTable) DumpFingerTable() {
 			if f.table[i].remoteNode.IpAddress == "" {
 				break
 			} else {
-				fmt.Printf("#%d", i)
+				fmt.Printf("#%d ", i)
 				f.table[i].Print()
 			}
 		}

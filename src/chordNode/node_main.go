@@ -16,7 +16,7 @@ const (
 	MAX_QUEUE_LEN         int32  = 1024
 	HASHED_ADDRESS_LENGTH int32  = 160
 	FIX_FINGER_INTERVAL   int32  = 1
-	STABILIZE_INTERVAL    int32  = 10
+	STABILIZE_INTERVAL    int32  = 5
 	CHECKPRE_INTERVAL     int32  = 5
 	MAX_SUCCESSORLIST_LEN int32  = 5
 	STOP                  uint8  = 0
