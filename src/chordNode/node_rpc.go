@@ -122,7 +122,22 @@ func (h *rpcServer) find(k KeyType) *ValueType {
 	return nil
 }
 
+func (h *rpcServer) checkPredecessor() {
+	var cnt int = 0
+	for len(h.node.IfStop) > 0 {
+		time.Sleep(time.Second * 1)
+		cnt++
+		if cnt == int(CHECKPRE_INTERVAL) {
+			h.doCheckPredecessor()
+			cnt = 0
+		}
+	}
+}
+
 func (h *rpcServer) doCheckPredecessor() {
+	if len(h.node.IfStop) > 0 {
+		return
+	}
 	if h.ping("a", h.node.nodeFingerTable.predecessor.GetAddrWithPort()) == "" {
 		h.node.NodeMessageQueueOut <- *NewCtrlMsgFromString("Predecessor fail, set to null", 0)
 		h.node.nodeFingerTable.predecessor.Reset()
@@ -130,10 +145,14 @@ func (h *rpcServer) doCheckPredecessor() {
 }
 
 func (h *rpcServer) fixFinger(wg *sync.WaitGroup) {
-	//var cnt int32 = 0
+	var cnt int32 = 0
 	for len(h.node.IfStop) == 0 {
-		time.Sleep(time.Millisecond * 100)
-		h.doFixFinger()
+		time.Sleep(time.Second * 1)
+		cnt += 1
+		if cnt == FIX_FINGER_INTERVAL {
+			h.doFixFinger()
+			cnt = 0
+		}
 	}
 	fmt.Println("FIXFINGER QUIT")
 	wg.Done()
@@ -194,9 +213,9 @@ func (h *rpcServer) join(addrWithPort string) bool {
 func (h *rpcServer) stabilize(wg *sync.WaitGroup) {
 	var cnt int32 = 0
 	for len(h.node.IfStop) == 0 {
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Second * 1)
 		cnt += 1
-		if cnt == 5 {
+		if cnt == STABILIZE_INTERVAL {
 			h.doStabilize()
 			cnt = 0
 		}

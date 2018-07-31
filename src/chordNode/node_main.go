@@ -17,6 +17,7 @@ const (
 	HASHED_ADDRESS_LENGTH int32  = 160
 	FIX_FINGER_INTERVAL   int32  = 1
 	STABILIZE_INTERVAL    int32  = 10
+	CHECKPRE_INTERVAL     int32  = 5
 	STOP                  uint8  = 0
 )
 
