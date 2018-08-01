@@ -22,8 +22,7 @@ type fingerTable struct {
 }
 
 type successorList struct {
-	successorPointer int32
-	list             []NodeInfo
+	list []NodeInfo
 }
 
 type NodeValue struct {
@@ -43,7 +42,6 @@ func newNodeValue(_v *NodeInfo, _f *NodeInfo, _s bool) *NodeValue {
 func newSuccessorList() *successorList {
 	ret := new(successorList)
 	ret.list = make([]NodeInfo, HASHED_ADDRESS_LENGTH)
-	ret.successorPointer = 0
 	return ret
 }
 
@@ -97,8 +95,7 @@ func (tif *tableInfo) Print() {
 }
 
 func (slst *successorList) DumpSuccessorList() {
-	fmt.Printf("current successor pointer is: %d\n", slst.successorPointer)
-	for i := slst.successorPointer; i < MAX_SUCCESSORLIST_LEN; i += 1 {
+	for i := 0; i < int(MAX_SUCCESSORLIST_LEN); i += 1 {
 		if slst.list[i].IpAddress == "" {
 			break
 		}
