@@ -22,17 +22,30 @@ type Greet struct {
 	From NodeInfo
 }
 
+type NodeData struct {
+	Key   string
+	Value string
+	From  NodeInfo
+}
+
+type NodeDataSet struct {
+	DataSet map[string]string
+	From    NodeInfo
+}
+
 type SuccListInfo struct {
 	SuccList [MAX_SUCCESSORLIST_LEN]NodeInfo
 }
 
 type rpcServer struct {
-	node       *RingNode
-	server     *rpc.Server
-	listener   *net.TCPListener
-	service    *RpcServiceModule
-	timeout    time.Duration
-	currentFix int
+	node                *RingNode
+	server              *rpc.Server
+	listener            *net.TCPListener
+	service             *RpcServiceModule
+	fingerTableLocker   *sync.Mutex
+	successorListLocker *sync.Mutex
+	timeout             time.Duration
+	currentFix          int
 }
 
 type RpcServiceModule struct {
@@ -74,6 +87,7 @@ func (h *rpcServer) accept() {
 		iconn, ierr := h.listener.Accept()
 		if ierr != nil {
 			PrintLog("[NETWORK ERROR]" + ierr.Error())
+			return
 		} else {
 			go h.server.ServeConn(iconn)
 		}
@@ -173,17 +187,76 @@ func (h *rpcServer) pingWithNodeInfo(g string, nif *NodeInfo) string {
 	return h.ping(g, nif.IpAddress+":"+strconv.Itoa(int(nif.Port)))
 }
 
-func (h *rpcServer) put(k KeyType, v ValueType) bool {
-	//TODO
-	return true
+func (h *rpcServer) put(k string, v string) bool {
+	var arg HashedValue
+	var arg1 NodeData
+	var ret NodeValue
+	var ret1 Greet
+	var cl *rpc.Client
+	hashedKey := hashString(k)
+	arg.From = h.node.Info
+	arg.V = hashedKey
+	ferr := h.service.FindSuccessorInit(arg, &ret)
+	if ferr != nil {
+		h.node.SendMessageOut("Put fail when find succ")
+		return false
+	}
+	tconn := h.rpcDialWithNodeInfo(&ret.V)
+	if tconn == nil {
+		h.node.SendMessageOut("Dial fail when put")
+		return false
+	}
+	arg1.From = h.node.Info
+	arg1.Key = k
+	arg1.Value = v
+	cl = rpc.NewClient(*tconn)
+	err := cl.Call("RingRPC.Put", &arg1, &ret1)
+	cl.Close()
+	if err != nil {
+		h.node.SendMessageOut("Put error: " + err.Error())
+		return false
+	} else {
+		h.node.SendMessageOut("Put Success")
+		return true
+	}
+
 }
 
-func (h *rpcServer) find(k KeyType) *ValueType {
-	//TODO
-	return nil
+func (h *rpcServer) get(k string) (string, bool) {
+	var arg HashedValue
+	var arg1 NodeData
+	var ret NodeValue
+	var ret1 NodeData
+	var cl *rpc.Client
+	hashedKey := hashString(k)
+	arg.From = h.node.Info
+	arg.V = hashedKey
+	ferr := h.service.FindSuccessorInit(arg, &ret)
+	if ferr != nil {
+		h.node.SendMessageOut("Gut fail when find succ: " + ferr.Error())
+		return "", false
+	}
+	arg1.From = h.node.Info
+	arg1.Key = k
+	tconn := h.rpcDialWithNodeInfo(&ret.V)
+	if tconn == nil {
+		h.node.SendMessageOut("Get fail when dial succ")
+		return "", false
+	}
+	cl = rpc.NewClient(*tconn)
+	err := cl.Call("RingRPC.Get", &arg1, &ret1)
+	cl.Close()
+	if err != nil {
+		h.node.SendMessageOut("Get fail when Call" + err.Error())
+		return "", false
+	} else {
+		h.node.SendMessageOut("Get success")
+		return ret1.Value, true
+	}
 }
 
-func (h *rpcServer) checkPredecessor() {
+func (h *rpcServer) checkPredecessor(wg *sync.WaitGroup) {
+	defer wg.Done()
 	var cnt int = 0
 	for len(h.node.IfStop) == 0 {
 		time.Sleep(time.Millisecond * 1)
@@ -199,7 +272,7 @@ func (h *rpcServer) doCheckPredecessor() {
 	if len(h.node.IfStop) > 0 || h.node.InRing == false || h.node.nodeFingerTable.predecessor.IpAddress == "" {
 		return
 	}
-	PrintLog("check pre")
+	//PrintLog("check pre")
 	if h.ping("a", h.node.nodeFingerTable.predecessor.GetAddrWithPort()) == "" {
 		h.node.SendMessageOut("Predecessor fail, set to null")
 		h.node.nodeFingerTable.predecessor.Reset()
@@ -503,4 +576,86 @@ func (h *RpcServiceModule) Notify(arg NodeValue, reply *Greet) (err error) {
 		reply.From = h.node.Info
 		return nil
 	}
+}
+
+func (h *RpcServiceModule) Put(arg NodeData, s *Greet) (err error) {
+	s.From = h.node.Info
+	if arg.From.IpAddress == "" || arg.From.Port == 0 {
+		err = errors.New("Who you are! Put fail")
+		s.Name = ""
+		return err
+	} else {
+		h.node.dataLocker.Lock()
+		h.node.data[arg.Key] = arg.Value
+		h.node.dataLocker.Unlock()
+		s.Name = "Success"
+		return nil
+	}
+}
+
+func (h *RpcServiceModule) Get(arg NodeData, ret *NodeData) (err error) {
+	if arg.From.IpAddress == "" || arg.From.Port == 0 {
+		err = errors.New("Who you are! Get fail")
+		return err
+	} else {
+		//Not lock and have a try
+		ret.From = h.node.Info
+		ret.Key = arg.Key
+		s, ok := h.node.data[arg.Key]
+		if !ok {
+			ret.Value = "Not Found"
+			return nil
+		} else {
+			ret.Value = s
+			return nil
+		}
+	}
+}
+
+func (h *RpcServiceModule) PutMany(arg NodeDataSet, ret *Greet) (err error) {
+	ret.From = h.node.Info
+	if arg.From.IpAddress == "" || arg.From.Port == 0 {
+		err = errors.New("Who you are! PutMany fail")
+		return err
+	}
+	h.node.dataLocker.Lock()
+	for k, v := range arg.DataSet {
+		h.node.data[k] = v
+	}
+	h.node.dataLocker.Unlock()
+	return nil
+}
+
+func (h *RpcServiceModule) GetAll(arg Greet, ret *NodeDataSet) (err error) {
+	if arg.From.IpAddress == "" || arg.From.Port == 0 {
+		err = errors.New("Who you are! GetAll fail")
+		return err
+	}
+	ret.From = h.node.Info
+	ret.DataSet = make(map[string]string)
+	for k, v := range h.node.data {
+		ret.DataSet[k] = v
+	}
+	return nil
+}
+
+func (h *RpcServiceModule) NotifyLeaveAsPre(arg NodeValue, s *string) (err error) {
+	//TODO lock SuccessorList lock fingerTable
+	if arg.V.IpAddress == "" {
+		err = errors.New("Why you give me a FUCKING EMPTY ADDRESS?")
+		*s = ""
+		return err
+	} else {
+		for i := 1; i < int(MAX_SUCCESSORLIST_LEN); i += 1 {
+			h.node.nodeSuccessorList.list[i-1] = h.node.nodeSuccessorList.list[i]
+		}
+		h.node.nodeSuccessorList.list[int(MAX_SUCCESSORLIST_LEN)-1] = arg.V // last element of next
+		*s = "Success"
+		return nil
+	}
+}
+
+func (h *RpcServiceModule) NotifyLeaveAsSucc(arg NodeValue, s *string) (err error) {
+	//TODO lock pre ,getdata & update pre
+	return nil
 }

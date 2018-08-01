@@ -23,10 +23,6 @@ const (
 	STOP                  uint8  = 0
 )
 
-type KeyType string
-
-type ValueType string
-
 type ctrlMessage struct {
 	name []string
 	arg  int32 //This arg is useless
@@ -58,13 +54,14 @@ type RingNode struct {
 	Info                NodeInfo
 	InRing              bool
 	currentMsg          ctrlMessage
-	data                map[KeyType]ValueType
-	nodeFingerTable     *fingerTable
-	nodeSuccessorList   *successorList
-	rpcModule           *rpcServer
+	data                map[string]string
 	UserMessageQueueIn  chan ctrlMessage
 	NodeMessageQueueOut chan ctrlMessage
 	IfStop              chan uint8
+	nodeFingerTable     *fingerTable
+	nodeSuccessorList   *successorList
+	rpcModule           *rpcServer
+	dataLocker          *sync.Mutex
 }
 
 func (n *RingNode) PrintNodeInfo() {
@@ -92,11 +89,7 @@ func Between(a *big.Int, i *big.Int, b *big.Int, inclusive bool) bool {
 
 func hashAddress(ip string, port int32) big.Int {
 	toHash := ip + strconv.Itoa(int(port))
-	hasher := sha1.New()
-	hasher.Write([]byte(toHash))
-	tmp := new(big.Int).SetBytes(hasher.Sum(nil))
-	hashModAddress := *new(big.Int).Mod(tmp, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(HASHED_ADDRESS_LENGTH)), nil))
-	return hashModAddress
+	return hashString(toHash)
 }
 
 func hashAddressFromNodeInfo(nif *NodeInfo) big.Int {
@@ -105,9 +98,18 @@ func hashAddressFromNodeInfo(nif *NodeInfo) big.Int {
 	return hashAddress(ip, port)
 }
 
+func hashString(s string) big.Int {
+	hasher := sha1.New()
+	hasher.Write([]byte(s))
+	tmp := new(big.Int).SetBytes(hasher.Sum(nil))
+	hashModAddress := *new(big.Int).Mod(tmp, new(big.Int).Exp(big.NewInt(2), big.NewInt(int64(HASHED_ADDRESS_LENGTH)), nil))
+	return hashModAddress
+}
+
 func NewNode(port int32) *RingNode {
 	var ret = new(RingNode)
 	ret.Info = *NewNodeInfo(ret.getIp(), port)
+	ret.data = make(map[string]string)
 	ret.InRing = false
 	ret.UserMessageQueueIn = make(chan ctrlMessage, MAX_QUEUE_LEN)
 	ret.NodeMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
@@ -119,6 +121,7 @@ func NewNode(port int32) *RingNode {
 	ret.IfStop = make(chan uint8, 1)
 	ret.nodeSuccessorList = newSuccessorList()
 	ret.rpcModule = newRpcServer(ret)
+	ret.dataLocker = new(sync.Mutex)
 	ret.rpcModule.server.RegisterName("RingRPC", ret.rpcModule.service)
 	return ret
 }
@@ -181,23 +184,34 @@ func (n *RingNode) handleMsg(msg *ctrlMessage) {
 	case "nf":
 		n.Info.Print()
 		break
+	case "get":
+		res, ok := n.rpcModule.get(msg.name[1])
+		if ok {
+			fmt.Println(res)
+		}
+		break
+	case "put":
+		n.rpcModule.put(msg.name[1], msg.name[2])
+		break
 	default:
 	}
 	//TODO
 }
 
 func (n *RingNode) ProcessUserCommand(wg *sync.WaitGroup) {
+	defer wg.Done()
 	nfh := hashAddressFromNodeInfo(&n.Info)
+	var ok bool = true
 	//welmsg := NewCtrlMsgFromString("The node start on ip "+n.Info.IpAddress+":"+strconv.Itoa(int(n.Info.Port))+" with hashed addresses:"+nfh.String(), 1)
 	n.SendMessageOut("The node start on ip " + n.Info.IpAddress + ":" + strconv.Itoa(int(n.Info.Port)) + " with hashed addresses:" + nfh.String())
-	for {
-		if len(n.IfStop) > 0 {
+	for len(n.IfStop) == 0 {
+		n.currentMsg, ok = <-n.UserMessageQueueIn
+		if !ok {
 			break
 		}
-		n.currentMsg = <-n.UserMessageQueueIn
 		n.handleMsg(&n.currentMsg)
 	}
-	wg.Done()
+	fmt.Println("PUC QUIT")
 }
 
 func (n *RingNode) Create() {
@@ -224,18 +238,19 @@ func (n *RingNode) Run(wg *sync.WaitGroup) {
 	defer func() {
 		n.rpcModule.listener.Close()
 		close(n.NodeMessageQueueOut)
-		close(n.UserMessageQueueIn)
 		wg.Done()
 	}()
 	var wgi sync.WaitGroup
 	n.rpcModule.startListen()
-	go n.rpcModule.server.Accept(n.rpcModule.listener)
+	go n.rpcModule.accept()
 	wgi.Add(1)
 	go n.ProcessUserCommand(&wgi)
 	wgi.Add(1)
 	go n.rpcModule.stabilize(&wgi)
 	wgi.Add(1)
 	go n.rpcModule.fixFinger(&wgi)
-	go n.rpcModule.checkPredecessor()
+	wgi.Add(1)
+	go n.rpcModule.checkPredecessor(&wgi)
 	wgi.Wait()
+	close(n.UserMessageQueueIn)
 }

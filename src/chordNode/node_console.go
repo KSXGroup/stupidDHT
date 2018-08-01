@@ -13,6 +13,8 @@ const (
 	startInfo string = "Node start on ip: "
 	pingHelp  string = "ping <IP Address>:<Port>"
 	joinHelp  string = "join <IP Address>:<Port>"
+	putHelp   string = "put <key> <value>"
+	getHelp   string = "get <key>"
 )
 
 type NodeConsole struct {
@@ -87,6 +89,20 @@ func (c *NodeConsole) processInput(ipt []string) int {
 		case "nf":
 			c.node.UserMessageQueueIn <- mmsg
 			return 1
+		case "put":
+			if len(mmsg.name) != 3 {
+				fmt.Println(putHelp)
+				return 1
+			}
+			c.node.UserMessageQueueIn <- mmsg
+			return 1
+		case "get":
+			if len(mmsg.name) != 2 {
+				fmt.Println(getHelp)
+				return 1
+			}
+			c.node.UserMessageQueueIn <- mmsg
+			return 1
 		default:
 			return 0
 		}
@@ -102,7 +118,7 @@ func (c *NodeConsole) Run() int {
 	go c.processNodeInfo(&wg)
 	reader := bufio.NewReader(os.Stdin)
 	var ipt string
-	for {
+	for len(c.node.IfStop) == 0 {
 		ipt, _ = reader.ReadString('\n')
 		ipt = strings.TrimSpace(ipt)
 		ipt = strings.Replace(ipt, "\n", "", -1)
