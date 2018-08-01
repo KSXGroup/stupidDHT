@@ -37,16 +37,22 @@ type SuccListInfo struct {
 	SuccList [MAX_SUCCESSORLIST_LEN]NodeInfo
 }
 
+type NodeQuitData struct {
+	DataSet map[string]string
+	From    NodeInfo
+	Pre     NodeInfo
+}
+
 type rpcServer struct {
-	node                *RingNode
-	server              *rpc.Server
-	listener            *net.TCPListener
-	service             *RpcServiceModule
-	fingerTableLocker   *sync.Mutex
-	successorListLocker *sync.Mutex
-	predecessorLocker   *sync.Mutex
-	timeout             time.Duration
-	currentFix          int
+	node                  *RingNode
+	server                *rpc.Server
+	listener              *net.TCPListener
+	service               *RpcServiceModule
+	successorListLocker   *sync.Mutex
+	predecessorLocker     *sync.Mutex
+	fingerTableLockerList [HASHED_ADDRESS_LENGTH]*sync.Mutex
+	timeout               time.Duration
+	currentFix            int
 }
 
 type RpcServiceModule struct {
@@ -59,11 +65,13 @@ func newRpcServer(n *RingNode) *rpcServer {
 	ret.server = rpc.NewServer()
 	ret.node = n
 	ret.service.node = n
-	ret.fingerTableLocker = new(sync.Mutex)
 	ret.successorListLocker = new(sync.Mutex)
 	ret.predecessorLocker = new(sync.Mutex)
 	ret.timeout = time.Duration(SERVER_TIME_OUT)
 	ret.currentFix = 0
+	for i := 0; i < int(HASHED_ADDRESS_LENGTH); i += 1 {
+		ret.fingerTableLockerList[i] = new(sync.Mutex)
+	}
 	return ret
 }
 
@@ -259,6 +267,46 @@ func (h *rpcServer) get(k string) (string, bool) {
 	}
 }
 
+func (h *rpcServer) quit() {
+	var ret Greet
+	var arg1 NodeValue
+	var arg2 NodeQuitData
+	var tconn *net.Conn
+	arg1.From = h.node.Info
+	arg2.From = h.node.Info
+	arg1.V = h.node.nodeSuccessorList.list[int(MAX_SUCCESSORLIST_LEN)-1]
+	if !(h.node.nodeFingerTable.predecessor.IpAddress == "" || h.node.nodeFingerTable.predecessor.Equal(&h.node.Info)) {
+		tconn = h.rpcDialWithNodeInfo(&h.node.nodeFingerTable.predecessor)
+		if tconn == nil {
+			h.node.SendMessageOut("Dail pre fail when quit")
+		} else {
+			cl := rpc.NewClient(*tconn)
+			preErr := cl.Call("RingRPC.NotifyLeaveAsPre", &arg1, &ret)
+			if preErr != nil || ret.Name != "Success" || ret.From.IpAddress == "" || ret.From.Port == 0 {
+				h.node.SendMessageOut("Notify pre fail when quit " + preErr.Error())
+			}
+			cl.Close()
+		}
+	}
+	if len(h.node.data) > 0 && !h.node.Info.Equal(&h.node.nodeSuccessorList.list[0]) {
+		tconn = h.rpcDialWithNodeInfo(&h.node.nodeSuccessorList.list[0])
+		if tconn == nil {
+			h.node.SendMessageOut("Dail succ fail when quit")
+		} else {
+			arg2.DataSet = make(map[string]string)
+			for k, v := range h.node.data {
+				arg2.DataSet[k] = v
+			}
+			cl := rpc.NewClient(*tconn)
+			preErr := cl.Call("RingRPC.NotifyLeaveAsSucc", &arg2, &ret)
+			if preErr != nil || ret.Name != "Success" || ret.From.IpAddress == "" || ret.From.Port == 0 {
+				h.node.SendMessageOut("Notify succ fail when quit " + preErr.Error())
+			}
+			cl.Close()
+		}
+	}
+}
+
 func (h *rpcServer) checkPredecessor(wg *sync.WaitGroup) {
 	defer wg.Done()
 	var cnt int = 0
@@ -279,7 +327,9 @@ func (h *rpcServer) doCheckPredecessor() {
 	//PrintLog("check pre")
 	if h.ping("a", h.node.nodeFingerTable.predecessor.GetAddrWithPort()) == "" {
 		h.node.SendMessageOut("Predecessor fail, set to null")
+		h.node.rpcModule.predecessorLocker.Lock()
 		h.node.nodeFingerTable.predecessor.Reset()
+		h.node.rpcModule.predecessorLocker.Unlock()
 	}
 }
 
@@ -312,7 +362,9 @@ func (h *rpcServer) doFixFinger() {
 		h.node.SendMessageOut("Find succ fail when fix finger" + err.Error())
 		return
 	} else {
+		h.node.rpcModule.fingerTableLockerList[h.currentFix].Lock()
 		h.node.nodeFingerTable.table[h.currentFix].remoteNode = ret.V
+		h.node.rpcModule.fingerTableLockerList[h.currentFix].Unlock()
 		//h.node.SendMessageOut("update finger "+strconv.Itoa(h.currentFix)+"to"+ret.V.GetAddrWithPort(), 0)
 	}
 	if int32(h.currentFix+1) == HASHED_ADDRESS_LENGTH {
@@ -414,7 +466,9 @@ func (h *rpcServer) doStabilize() {
 		successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[0])
 		if reply.IpAddress != "" && Between(&n, &x, &successor, false) {
 			ifChanged = true
+			h.node.rpcModule.successorListLocker.Lock()
 			h.node.nodeSuccessorList.list[0] = reply
+			h.node.rpcModule.successorListLocker.Unlock()
 			h.node.SendMessageOut("Update successor: " + reply.GetAddrWithPort())
 		}
 		if h.node.nodeSuccessorList.list[0].IpAddress != "" {
@@ -432,9 +486,11 @@ func (h *rpcServer) doStabilize() {
 			if serr != nil {
 				h.node.SendMessageOut("Copy successor list fail" + serr.Error() + " " + h.node.nodeSuccessorList.list[0].GetAddrWithPort())
 			} else {
+				h.node.rpcModule.successorListLocker.Lock()
 				for i := 1; i < int(MAX_SUCCESSORLIST_LEN); i += 1 {
 					h.node.nodeSuccessorList.list[i] = replySucc.SuccList[i-1]
 				}
+				h.node.rpcModule.successorListLocker.Unlock()
 				//h.node.nodeSuccessorList.DumpSuccessorList()
 				//h.node.SendMessageOut("Copy successor list success" + " " + h.node.nodeSuccessorList.list[0].GetAddrWithPort())
 			}
@@ -675,16 +731,46 @@ func (h *RpcServiceModule) NotifyLeaveAsPre(arg NodeValue, s *string) (err error
 		*s = ""
 		return err
 	} else {
-		for i := 1; i < int(MAX_SUCCESSORLIST_LEN); i += 1 {
-			h.node.nodeSuccessorList.list[i-1] = h.node.nodeSuccessorList.list[i]
+		h.node.rpcModule.successorListLocker.Lock()
+		h.node.rpcModule.fingerTableLockerList[0].Lock()
+		var stpos int = -1
+		for i := 0; i < int(MAX_SUCCESSORLIST_LEN)-1; i += 1 {
+			if h.node.nodeSuccessorList.list[i].Equal(&arg.From) {
+				stpos = i
+				break
+			}
 		}
-		h.node.nodeSuccessorList.list[int(MAX_SUCCESSORLIST_LEN)-1] = arg.V // last element of next
+		if stpos != -1 {
+			for i := stpos; i < int(MAX_SUCCESSORLIST_LEN)-1; i += 1 {
+				h.node.nodeSuccessorList.list[i] = h.node.nodeSuccessorList.list[i+1]
+			}
+			h.node.nodeSuccessorList.list[int(MAX_SUCCESSORLIST_LEN)-1] = arg.V // last element of next
+			h.node.nodeFingerTable.table[0].remoteNode = h.node.nodeSuccessorList.list[0]
+		}
+		h.node.rpcModule.successorListLocker.Unlock()
+		h.node.rpcModule.fingerTableLockerList[0].Unlock()
 		*s = "Success"
 		return nil
 	}
 }
 
-func (h *RpcServiceModule) NotifyLeaveAsSucc(arg NodeValue, s *string) (err error) {
+func (h *RpcServiceModule) NotifyLeaveAsSucc(arg NodeQuitData, ret *Greet) (err error) {
 	//TODO lock pre ,getdata & update pre
+	if arg.From.IpAddress == "" || arg.From.Port == 0 {
+		err = errors.New("Who you are! NotifyLeaveAsSucc fail")
+		return err
+	}
+	h.node.rpcModule.predecessorLocker.Lock()
+	h.node.nodeFingerTable.predecessor = arg.Pre
+	h.node.rpcModule.predecessorLocker.Unlock()
+	if len(arg.DataSet) > 0 {
+		h.node.dataLocker.Lock()
+		for k, v := range arg.DataSet {
+			h.node.data[k] = v
+		}
+		h.node.dataLocker.Unlock()
+	}
+	ret.From = h.node.Info
+	ret.Name = "Success"
 	return nil
 }

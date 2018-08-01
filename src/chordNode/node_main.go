@@ -255,6 +255,7 @@ func (n *RingNode) Create() {
 
 func (n *RingNode) Quit() {
 	n.InRing = false
+	n.rpcModule.quit()
 }
 
 func (n *RingNode) Join(addrWithPort string) {
