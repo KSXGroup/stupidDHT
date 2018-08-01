@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -28,7 +29,7 @@ type ValueType string
 
 type ctrlMessage struct {
 	name []string
-	arg  int32
+	arg  int32 //This arg is useless
 }
 
 func NewCtrlMsg(_n []string, _arg int32) *ctrlMessage {
@@ -41,8 +42,15 @@ func NewCtrlMsg(_n []string, _arg int32) *ctrlMessage {
 func NewCtrlMsgFromString(_n string, _arg int32) *ctrlMessage {
 	tmsg := new(ctrlMessage)
 	tmsg.arg = _arg
-	tmsg.name = make([]string, 10)
+	tmsg.name = make([]string, 1)
 	tmsg.name[0] = _n
+	return tmsg
+}
+
+func NewCtrlMsgFromStringSplited(_n string, _arg int32) *ctrlMessage {
+	tmsg := new(ctrlMessage)
+	tmsg.arg = _arg
+	tmsg.name = strings.Fields(_n)
 	return tmsg
 }
 
@@ -115,6 +123,14 @@ func NewNode(port int32) *RingNode {
 	return ret
 }
 
+func (n *RingNode) SendMessageIn(cmd string) {
+	n.UserMessageQueueIn <- *NewCtrlMsgFromStringSplited(cmd, 0)
+}
+
+func (n *RingNode) SendMessageOut(info string) {
+	n.NodeMessageQueueOut <- *NewCtrlMsgFromString(info, 0)
+}
+
 func (n *RingNode) getIp() string {
 	var ipAddress string
 	addrList, err := net.InterfaceAddrs()
@@ -132,9 +148,7 @@ func (n *RingNode) getIp() string {
 }
 
 func (n *RingNode) handleMsg(msg *ctrlMessage) {
-	tmp := NewCtrlMsgFromString("The message "+msg.name[0]+" is handled", 0)
-	//time.Sleep(1000 * time.Millisecond)
-	n.NodeMessageQueueOut <- *tmp
+	n.SendMessageOut("The message " + msg.name[0] + " is handled")
 	switch msg.name[0] {
 	case "quit":
 		n.Quit()
@@ -147,7 +161,7 @@ func (n *RingNode) handleMsg(msg *ctrlMessage) {
 		break
 	case "create":
 		n.Create()
-		n.NodeMessageQueueOut <- *NewCtrlMsgFromString("Create ring and set table[0] and pre to "+n.Info.IpAddress+":"+strconv.Itoa(int(n.Info.Port)), 1)
+		n.SendMessageOut("Create ring and set table[0] and pre to " + n.Info.IpAddress + ":" + strconv.Itoa(int(n.Info.Port)))
 		break
 	case "join":
 		n.Join(msg.name[1])
@@ -158,7 +172,7 @@ func (n *RingNode) handleMsg(msg *ctrlMessage) {
 	case "ping":
 		ret := n.rpcModule.ping(",fuck", msg.name[1])
 		if ret != "" {
-			n.NodeMessageQueueOut <- *NewCtrlMsgFromString(ret, 0)
+			n.SendMessageOut(ret)
 		}
 		break
 	case "dumpsucc":
@@ -174,8 +188,8 @@ func (n *RingNode) handleMsg(msg *ctrlMessage) {
 
 func (n *RingNode) ProcessUserCommand(wg *sync.WaitGroup) {
 	nfh := hashAddressFromNodeInfo(&n.Info)
-	welmsg := NewCtrlMsgFromString("The node start on ip "+n.Info.IpAddress+":"+strconv.Itoa(int(n.Info.Port))+" with hashed addresses:"+nfh.String(), 1)
-	n.NodeMessageQueueOut <- *welmsg
+	//welmsg := NewCtrlMsgFromString("The node start on ip "+n.Info.IpAddress+":"+strconv.Itoa(int(n.Info.Port))+" with hashed addresses:"+nfh.String(), 1)
+	n.SendMessageOut("The node start on ip " + n.Info.IpAddress + ":" + strconv.Itoa(int(n.Info.Port)) + " with hashed addresses:" + nfh.String())
 	for {
 		if len(n.IfStop) > 0 {
 			break
