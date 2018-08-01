@@ -80,6 +80,56 @@ func (h *rpcServer) accept() {
 	}
 }
 
+func (h *rpcServer) closestPrecedingNodeInFingerTable(v HashedValue) NodeInfo {
+	for pos := int((HASHED_ADDRESS_LENGTH - 1)); pos >= 0; pos -= 1 {
+		self := hashAddressFromNodeInfo(&h.node.Info)
+		rmtnd := hashAddressFromNodeInfo(&h.node.nodeFingerTable.table[pos].remoteNode)
+		if (h.node.nodeFingerTable.table[pos].remoteNode.IpAddress != "") && Between(&self, &rmtnd, &v.V, false) {
+			if h.pingWithNodeInfo("a", &h.node.nodeFingerTable.table[pos].remoteNode) != "" {
+				return h.node.nodeFingerTable.table[pos].remoteNode
+			}
+		}
+	}
+	return h.node.Info
+}
+
+func (h *rpcServer) closestPrecedingNodeInSuccessorList(v HashedValue) NodeInfo {
+	var stpos int = -1
+	for i := 0; i < int(MAX_SUCCESSORLIST_LEN); i += 1 {
+		if h.node.nodeSuccessorList.list[i] == h.node.Info {
+			stpos = i
+			break
+		}
+	}
+	if stpos == -1 {
+		stpos = int(MAX_SUCCESSORLIST_LEN) - 1
+	}
+	for pos := stpos - 1; pos >= 0; pos -= 1 {
+		self := hashAddressFromNodeInfo(&h.node.Info)
+		rmtnd := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[pos])
+		if (h.node.nodeSuccessorList.list[pos].IpAddress != "") && Between(&self, &rmtnd, &v.V, false) {
+			if h.pingWithNodeInfo("a", &h.node.nodeSuccessorList.list[pos]) != "" {
+				return h.node.nodeSuccessorList.list[pos]
+			}
+		}
+	}
+	return h.node.Info
+}
+
+func (h *rpcServer) closestPrecedingNode(v HashedValue) NodeInfo {
+	var closestNodeInSuccList, closestNodeInFingerTable NodeInfo
+	closestNodeInFingerTable = h.closestPrecedingNodeInFingerTable(v)
+	closestNodeInSuccList = h.closestPrecedingNodeInSuccessorList(v)
+	fhash := hashAddressFromNodeInfo(&closestNodeInFingerTable)
+	shash := hashAddressFromNodeInfo(&closestNodeInSuccList)
+	nhash := hashAddressFromNodeInfo(&h.node.Info)
+	if Between(&nhash, &fhash, &shash, true) {
+		return closestNodeInSuccList
+	} else {
+		return closestNodeInFingerTable
+	}
+}
+
 func (h *rpcServer) rpcDial(addr string) *net.Conn {
 	tconn, err := net.DialTimeout("tcp", addr, h.timeout)
 	if err != nil {
@@ -119,6 +169,10 @@ func (h *rpcServer) ping(g string, addr string) string {
 	}
 }
 
+func (h *rpcServer) pingWithNodeInfo(g string, nif *NodeInfo) string {
+	return h.ping(g, nif.IpAddress+":"+strconv.Itoa(int(nif.Port)))
+}
+
 func (h *rpcServer) put(k KeyType, v ValueType) bool {
 	//TODO
 	return true
@@ -142,7 +196,7 @@ func (h *rpcServer) checkPredecessor() {
 }
 
 func (h *rpcServer) doCheckPredecessor() {
-	if len(h.node.IfStop) > 0 || h.node.InRing == false {
+	if len(h.node.IfStop) > 0 || h.node.InRing == false || h.node.nodeFingerTable.predecessor.IpAddress == "" {
 		return
 	}
 	PrintLog("check pre")
@@ -346,7 +400,7 @@ func (h *RpcServiceModule) FindSuccessor(p HashedValue, ret *NodeValue) (err err
 		ret.Status = true
 		return
 	} else {
-		ret.V = h.node.closestPrecedingNode(p)
+		ret.V = h.node.rpcModule.closestPrecedingNode(p)
 		ret.From = h.node.Info
 		ret.Status = false
 		return
@@ -370,7 +424,7 @@ func (h *RpcServiceModule) FindSuccessorInit(p HashedValue, ret *NodeValue) (err
 		var tconn *net.Conn
 		var cl *rpc.Client
 		reply := new(NodeValue)
-		reply.V = h.node.closestPrecedingNode(tp)
+		reply.V = h.node.rpcModule.closestPrecedingNode(tp)
 		reply.From = h.node.Info
 		for {
 			tconn = h.node.rpcModule.rpcDialWithNodeInfo(&reply.V)

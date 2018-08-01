@@ -82,17 +82,6 @@ func Between(a *big.Int, i *big.Int, b *big.Int, inclusive bool) bool {
 	}
 }
 
-func (n *RingNode) closestPrecedingNode(v HashedValue) NodeInfo {
-	for pos := int((HASHED_ADDRESS_LENGTH - 1)); pos >= 0; pos -= 1 {
-		self := hashAddressFromNodeInfo(&n.Info)
-		rmtnd := hashAddressFromNodeInfo(&n.nodeFingerTable.table[pos].remoteNode)
-		if (n.nodeFingerTable.table[pos].remoteNode.IpAddress != "") && Between(&self, &rmtnd, &v.V, false) {
-			return n.nodeFingerTable.table[pos].remoteNode
-		}
-	}
-	return n.Info
-}
-
 func hashAddress(ip string, port int32) big.Int {
 	toHash := ip + strconv.Itoa(int(port))
 	hasher := sha1.New()
