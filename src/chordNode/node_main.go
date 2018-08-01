@@ -66,17 +66,6 @@ type RingNode struct {
 
 func (n *RingNode) PrintNodeInfo() {
 	n.Info.Print()
-	//TODO PRINT FINGER LIST
-}
-
-func (n *RingNode) DumpData() {
-	if len(n.data) == 0 {
-		fmt.Println("No Data")
-	} else {
-		for k, v := range n.data {
-			fmt.Println(string(k) + " " + string(v))
-		}
-	}
 }
 
 func Between(a *big.Int, i *big.Int, b *big.Int, inclusive bool) bool {
@@ -126,12 +115,51 @@ func NewNode(port int32) *RingNode {
 	return ret
 }
 
+func (n *RingNode) getDataForPre(pre *NodeInfo, dta *map[string]string) {
+	var hs, hpre, hself big.Int
+	hpre = hashAddressFromNodeInfo(pre)
+	hself = hashAddressFromNodeInfo(&n.Info)
+	for k, v := range n.data {
+		hs = hashString(k)
+		if !Between(&hpre, &hs, &hself, true) {
+			(*dta)[k] = v
+		}
+	}
+	return
+}
+
 func (n *RingNode) SendMessageIn(cmd string) {
 	n.UserMessageQueueIn <- *NewCtrlMsgFromStringSplited(cmd, 0)
 }
 
 func (n *RingNode) SendMessageOut(info string) {
 	n.NodeMessageQueueOut <- *NewCtrlMsgFromString(info, 0)
+}
+
+func (n *RingNode) DumpData() {
+	var pos int = 0
+	if len(n.data) == 0 {
+		fmt.Println("[No Data]")
+		return
+	}
+	for k, v := range n.data {
+		fmt.Printf("DATA#%d %s %s\n", pos, k, v)
+		pos += 1
+	}
+}
+
+func (n *RingNode) Put(k string, v string) bool {
+	if !n.InRing || len(n.IfStop) > 0 {
+		return false
+	}
+	return n.rpcModule.put(k, v)
+}
+
+func (n *RingNode) Get(k string) (string, bool) {
+	if !n.InRing || len(n.IfStop) > 0 {
+		return "", false
+	}
+	return n.rpcModule.get(k)
 }
 
 func (n *RingNode) getIp() string {
@@ -181,17 +209,20 @@ func (n *RingNode) handleMsg(msg *ctrlMessage) {
 	case "dumpsucc":
 		n.nodeSuccessorList.DumpSuccessorList()
 		break
+	case "dumpdata":
+		n.DumpData()
+		break
 	case "nf":
 		n.Info.Print()
 		break
 	case "get":
-		res, ok := n.rpcModule.get(msg.name[1])
+		res, ok := n.Get(msg.name[1])
 		if ok {
 			fmt.Println(res)
 		}
 		break
 	case "put":
-		n.rpcModule.put(msg.name[1], msg.name[2])
+		n.Put(msg.name[1], msg.name[2])
 		break
 	default:
 	}
@@ -238,6 +269,7 @@ func (n *RingNode) Run(wg *sync.WaitGroup) {
 	defer func() {
 		n.rpcModule.listener.Close()
 		close(n.NodeMessageQueueOut)
+		close(n.UserMessageQueueIn)
 		wg.Done()
 	}()
 	var wgi sync.WaitGroup
@@ -252,5 +284,4 @@ func (n *RingNode) Run(wg *sync.WaitGroup) {
 	wgi.Add(1)
 	go n.rpcModule.checkPredecessor(&wgi)
 	wgi.Wait()
-	close(n.UserMessageQueueIn)
 }

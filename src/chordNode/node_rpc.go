@@ -44,6 +44,7 @@ type rpcServer struct {
 	service             *RpcServiceModule
 	fingerTableLocker   *sync.Mutex
 	successorListLocker *sync.Mutex
+	predecessorLocker   *sync.Mutex
 	timeout             time.Duration
 	currentFix          int
 }
@@ -58,6 +59,9 @@ func newRpcServer(n *RingNode) *rpcServer {
 	ret.server = rpc.NewServer()
 	ret.node = n
 	ret.service.node = n
+	ret.fingerTableLocker = new(sync.Mutex)
+	ret.successorListLocker = new(sync.Mutex)
+	ret.predecessorLocker = new(sync.Mutex)
 	ret.timeout = time.Duration(SERVER_TIME_OUT)
 	ret.currentFix = 0
 	return ret
@@ -365,7 +369,7 @@ func (h *rpcServer) doStabilize() {
 		//h.node.SendMessageOut("Node stop or not in ring, stab exit", 0)
 		return
 	}
-	h.node.SendMessageOut("Start stabilize")
+	//h.node.SendMessageOut("Start stabilize")
 	var arg HashedValue
 	var reply NodeInfo
 	var arg1 NodeValue
@@ -387,13 +391,13 @@ func (h *rpcServer) doStabilize() {
 			h.node.IfStop <- STOP
 			return
 		} else {
-			PrintLog("Remove first entry")
-			h.node.nodeSuccessorList.DumpSuccessorList()
+			//PrintLog("Remove first entry")
+			//	h.node.nodeSuccessorList.DumpSuccessorList()
 			for i := 0; i < int(MAX_SUCCESSORLIST_LEN-1); i += 1 {
 				h.node.nodeSuccessorList.list[i] = h.node.nodeSuccessorList.list[i+1]
 			}
 			h.node.nodeSuccessorList.list[int(MAX_SUCCESSORLIST_LEN-1)].Reset()
-			h.node.nodeSuccessorList.DumpSuccessorList()
+			//	h.node.nodeSuccessorList.DumpSuccessorList()
 		}
 	}
 	arg.From = h.node.Info
@@ -431,8 +435,8 @@ func (h *rpcServer) doStabilize() {
 				for i := 1; i < int(MAX_SUCCESSORLIST_LEN); i += 1 {
 					h.node.nodeSuccessorList.list[i] = replySucc.SuccList[i-1]
 				}
-				h.node.nodeSuccessorList.DumpSuccessorList()
-				h.node.SendMessageOut("Copy successor list success" + " " + h.node.nodeSuccessorList.list[0].GetAddrWithPort())
+				//h.node.nodeSuccessorList.DumpSuccessorList()
+				//h.node.SendMessageOut("Copy successor list success" + " " + h.node.nodeSuccessorList.list[0].GetAddrWithPort())
 			}
 		}
 		arg1.From = h.node.Info
@@ -464,7 +468,7 @@ func (h *RpcServiceModule) FindSuccessor(p HashedValue, ret *NodeValue) (err err
 		err = errors.New("INVALID ADDRESS")
 		return
 	}
-	PrintLog("New FindSucc request from" + p.From.GetAddrWithPort())
+	//PrintLog("New FindSucc request from" + p.From.GetAddrWithPort())
 	n := hashAddressFromNodeInfo(&h.node.Info)
 	successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[0])
 	if Between(&n, &p.V, &successor, true) {
@@ -554,12 +558,14 @@ func (h *RpcServiceModule) Ping(p Greet, ret *Greet) (err error) {
 		err = errors.New("INVALID PING")
 		return
 	}
-	PrintLog("New Ping Received")
+	//PrintLog("New Ping Received")
 	ret.Name = "Hello" + p.Name
 	return
 }
 
 func (h *RpcServiceModule) Notify(arg NodeValue, reply *Greet) (err error) {
+	var argData NodeDataSet
+	var retData Greet
 	if arg.V.IpAddress == "" {
 		err = errors.New("Why you give me a FUCKING EMPTY ADDRESS?")
 		return err
@@ -569,8 +575,30 @@ func (h *RpcServiceModule) Notify(arg NodeValue, reply *Greet) (err error) {
 		myargv := hashAddressFromNodeInfo(&arg.V)
 		self := hashAddressFromNodeInfo(&h.node.Info)
 		if h.node.nodeFingerTable.predecessor.IpAddress == "" || Between(&pre, &myargv, &self, false) {
+			argData.DataSet = make(map[string]string)
+			h.node.rpcModule.predecessorLocker.Lock()
 			h.node.nodeFingerTable.predecessor = arg.V
-			//h.node.SendMessageOut("Receive Notify, update pre to:"+arg.V.GetAddrWithPort(), 0)
+			h.node.SendMessageOut("Receive Notify, update pre to:" + arg.V.GetAddrWithPort())
+			// Transfer some data to pre
+			if !(arg.V.IpAddress == h.node.Info.IpAddress && arg.V.Port == h.node.Info.Port) {
+				tconn := h.node.rpcModule.rpcDialWithNodeInfo(&arg.V)
+				if tconn == nil {
+					h.node.SendMessageOut("Fail to dial when try to transfer data to pre, set to nil")
+					h.node.nodeFingerTable.predecessor.Reset()
+					h.node.rpcModule.predecessorLocker.Unlock()
+					return nil
+				} else {
+					cl := rpc.NewClient(*tconn)
+					h.node.getDataForPre(&arg.V, &argData.DataSet)
+					argData.From = h.node.Info
+					err := cl.Call("RingRPC.PutMany", &argData, &retData)
+					if err != nil || retData.Name != "Success" {
+						h.node.SendMessageOut("Transfer Keys to pre error:" + err.Error())
+					}
+					cl.Close()
+				}
+			}
+			h.node.rpcModule.predecessorLocker.Unlock()
 		}
 		reply.Name = "Success"
 		reply.From = h.node.Info
@@ -623,6 +651,7 @@ func (h *RpcServiceModule) PutMany(arg NodeDataSet, ret *Greet) (err error) {
 		h.node.data[k] = v
 	}
 	h.node.dataLocker.Unlock()
+	ret.Name = "Success"
 	return nil
 }
 

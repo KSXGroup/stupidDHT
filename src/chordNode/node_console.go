@@ -103,6 +103,9 @@ func (c *NodeConsole) processInput(ipt []string) int {
 			}
 			c.node.UserMessageQueueIn <- mmsg
 			return 1
+		case "dumpdata":
+			c.node.UserMessageQueueIn <- mmsg
+			return 1
 		default:
 			return 0
 		}
