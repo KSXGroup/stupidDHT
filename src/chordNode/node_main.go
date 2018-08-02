@@ -157,6 +157,13 @@ func (n *RingNode) DumpData() {
 	}
 }
 
+func (n *RingNode) Remove(k string) bool {
+	if !n.InRing || len(n.IfStop) > 0 {
+		return false
+	}
+	return n.rpcModule.remove(k)
+}
+
 func (n *RingNode) Put(k string, v string) bool {
 	if !n.InRing || len(n.IfStop) > 0 {
 		return false
@@ -257,6 +264,9 @@ func (n *RingNode) Create() {
 }
 
 func (n *RingNode) Quit() {
+	if !n.InRing {
+		return
+	}
 	n.rpcModule.quit()
 	n.InRing = false
 	for len(n.NodeMessageQueueOut) > 0 {

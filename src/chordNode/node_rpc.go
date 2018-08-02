@@ -2,7 +2,7 @@ package chordNode
 
 import (
 	"errors"
-	"fmt"
+	//"fmt"
 	"math/big"
 	"net"
 	"net/rpc"
@@ -245,7 +245,7 @@ func (h *rpcServer) get(k string) (string, bool) {
 	arg.V = hashedKey
 	ferr := h.service.FindSuccessorInit(arg, &ret)
 	if ferr != nil {
-		h.node.SendMessageOut("Gut fail when find succ: " + ferr.Error())
+		h.node.SendMessageOut("Get fail when find succ: " + ferr.Error())
 		return "", false
 	}
 	arg1.From = h.node.Info
@@ -264,6 +264,42 @@ func (h *rpcServer) get(k string) (string, bool) {
 	} else {
 		h.node.SendMessageOut("Get success")
 		return ret1.Value, true
+	}
+}
+
+func (h *rpcServer) remove(k string) bool {
+	var arg HashedValue
+	var arg1 NodeData
+	var ret NodeValue
+	var ret1 Greet
+	var cl *rpc.Client
+	arg.V = hashString(k)
+	arg.From = h.node.Info
+	ferr := h.service.FindSuccessorInit(arg, &ret)
+	if ferr != nil {
+		h.node.SendMessageOut("Remove fail when find succ: " + ferr.Error())
+		return false
+	}
+	arg1.From = h.node.Info
+	arg1.Key = k
+	tconn := h.rpcDialWithNodeInfo(&ret.V)
+	if tconn == nil {
+		h.node.SendMessageOut("Remove fail when dial succ")
+		return false
+	}
+	cl = rpc.NewClient(*tconn)
+	err := cl.Call("RingRPC.Remove", &arg1, &ret1)
+	cl.Close()
+	if err != nil {
+		h.node.SendMessageOut("Remove fail when call " + err.Error())
+		return false
+	} else {
+		if ret1.Name == "Not Found" {
+			h.node.SendMessageOut("Key not found")
+			return false
+		}
+		h.node.SendMessageOut("Remove Success")
+		return true
 	}
 }
 
@@ -343,7 +379,7 @@ func (h *rpcServer) fixFinger(wg *sync.WaitGroup) {
 			cnt = 0
 		}
 	}
-	fmt.Println("FIXFINGER QUIT")
+	//fmt.Println("FIXFINGER QUIT")
 	wg.Done()
 }
 
@@ -411,7 +447,7 @@ func (h *rpcServer) stabilize(wg *sync.WaitGroup) {
 			cnt = 0
 		}
 	}
-	fmt.Println("STAB QUIT")
+	//fmt.Println("STAB QUIT")
 	wg.Done()
 }
 
@@ -658,6 +694,26 @@ func (h *RpcServiceModule) Notify(arg NodeValue, reply *Greet) (err error) {
 		}
 		reply.Name = "Success"
 		reply.From = h.node.Info
+		return nil
+	}
+}
+
+func (h *RpcServiceModule) Remove(arg NodeData, ret *Greet) (err error) {
+	ret.From = h.node.Info
+	if arg.From.IpAddress == "" || arg.From.Port == 0 {
+		err := errors.New("Who you are! Remove fail")
+		ret.Name = ""
+		return err
+	} else {
+		h.node.dataLocker.Lock()
+		_, ok := h.node.data[arg.Key]
+		if !ok {
+			ret.Name = "Not Found"
+		} else {
+			delete(h.node.data, arg.Key)
+			ret.Name = "Success"
+		}
+		h.node.dataLocker.Unlock()
 		return nil
 	}
 }
