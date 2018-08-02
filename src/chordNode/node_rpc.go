@@ -78,7 +78,7 @@ func newRpcServer(n *RingNode) *rpcServer {
 func (h *rpcServer) startListen() {
 	addr, err := net.ResolveTCPAddr("tcp", h.node.Info.GetAddrWithPort())
 	if err != nil {
-		PrintLog("[Error]" + err.Error())
+		h.node.SendMessageOut("[Error]" + err.Error())
 		h.node.SendMessageOut("Fail to resolve address, node will stop." + EXIT_TIP)
 		h.node.IfStop <- STOP
 		return
@@ -86,7 +86,7 @@ func (h *rpcServer) startListen() {
 	lis, err := net.ListenTCP("tcp", addr)
 	h.listener = lis
 	if err != nil {
-		PrintLog("[Error]" + err.Error())
+		h.node.SendMessageOut("[Error]" + err.Error())
 		h.node.SendMessageOut("Fail to listen, node will stop." + EXIT_TIP)
 		h.node.IfStop <- STOP
 		return
@@ -98,7 +98,7 @@ func (h *rpcServer) accept() {
 	for len(h.node.IfStop) == 0 {
 		iconn, ierr := h.listener.Accept()
 		if ierr != nil {
-			PrintLog("[NETWORK ERROR]" + ierr.Error())
+			h.node.SendMessageOut("[NETWORK ERROR]" + ierr.Error())
 			return
 		} else {
 			go h.server.ServeConn(iconn)
@@ -185,7 +185,7 @@ func (h *rpcServer) ping(g string, addr string) string {
 	if err != nil {
 		cl.Close()
 		if err != nil {
-			PrintLog("close error:" + err.Error())
+			h.node.SendMessageOut("close error:" + err.Error())
 		}
 		h.node.SendMessageOut("Call Fail:" + err.Error())
 		return ""
@@ -275,7 +275,7 @@ func (h *rpcServer) quit() {
 	arg1.From = h.node.Info
 	arg2.From = h.node.Info
 	arg1.V = h.node.nodeSuccessorList.list[int(MAX_SUCCESSORLIST_LEN)-1]
-	if !(h.node.nodeFingerTable.predecessor.IpAddress == "" || h.node.nodeFingerTable.predecessor.Equal(&h.node.Info)) {
+	if !(h.node.nodeFingerTable.predecessor.IpAddress == "") && !h.node.nodeFingerTable.predecessor.Equal(&h.node.Info) {
 		tconn = h.rpcDialWithNodeInfo(&h.node.nodeFingerTable.predecessor)
 		if tconn == nil {
 			h.node.SendMessageOut("Dail pre fail when quit")
@@ -378,7 +378,7 @@ func (h *rpcServer) doFixFinger() {
 func (h *rpcServer) join(addrWithPort string) bool {
 	tconn := h.rpcDial(addrWithPort)
 	if tconn == nil {
-		PrintLog("Dial fail when join: " + addrWithPort)
+		h.node.SendMessageOut("Dial fail when join: " + addrWithPort)
 		return false
 	} else {
 		var arg HashedValue
@@ -476,7 +476,7 @@ func (h *rpcServer) doStabilize() {
 				cl.Close()
 				tconn = h.node.rpcModule.rpcDialWithNodeInfo(&h.node.nodeSuccessorList.list[0])
 				if tconn == nil {
-					PrintLog("Dial fail when stab when copy successor's succ list")
+					h.node.SendMessageOut("Dial fail when stab when copy successor's succ list")
 					return
 				}
 				cl = rpc.NewClient(*tconn)
@@ -648,10 +648,10 @@ func (h *RpcServiceModule) Notify(arg NodeValue, reply *Greet) (err error) {
 					h.node.getDataForPre(&arg.V, &argData.DataSet)
 					argData.From = h.node.Info
 					err := cl.Call("RingRPC.PutMany", &argData, &retData)
+					cl.Close()
 					if err != nil || retData.Name != "Success" {
 						h.node.SendMessageOut("Transfer Keys to pre error:" + err.Error())
 					}
-					cl.Close()
 				}
 			}
 			h.node.rpcModule.predecessorLocker.Unlock()
@@ -724,11 +724,12 @@ func (h *RpcServiceModule) GetAll(arg Greet, ret *NodeDataSet) (err error) {
 	return nil
 }
 
-func (h *RpcServiceModule) NotifyLeaveAsPre(arg NodeValue, s *string) (err error) {
+func (h *RpcServiceModule) NotifyLeaveAsPre(arg NodeValue, ret *Greet) (err error) {
 	//TODO lock SuccessorList lock fingerTable
+	ret.From = h.node.Info
 	if arg.V.IpAddress == "" {
 		err = errors.New("Why you give me a FUCKING EMPTY ADDRESS?")
-		*s = ""
+		ret.Name = ""
 		return err
 	} else {
 		h.node.rpcModule.successorListLocker.Lock()
@@ -749,7 +750,7 @@ func (h *RpcServiceModule) NotifyLeaveAsPre(arg NodeValue, s *string) (err error
 		}
 		h.node.rpcModule.successorListLocker.Unlock()
 		h.node.rpcModule.fingerTableLockerList[0].Unlock()
-		*s = "Success"
+		ret.Name = "Success"
 		return nil
 	}
 }

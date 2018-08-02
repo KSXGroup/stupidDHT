@@ -13,59 +13,59 @@ import (
 
 const (
 	EXIT_TIP              string = "You can press ANY KEY to exit."
-	SERVER_TIME_OUT       int64  = 6e8
+	SERVER_TIME_OUT       int64  = 5e8
 	MAX_QUEUE_LEN         int32  = 1024
 	HASHED_ADDRESS_LENGTH int32  = 160
-	FIX_FINGER_INTERVAL   int32  = 1000
-	STABILIZE_INTERVAL    int32  = 1000
-	CHECKPRE_INTERVAL     int32  = 1000
+	FIX_FINGER_INTERVAL   int32  = 200
+	STABILIZE_INTERVAL    int32  = 200
+	CHECKPRE_INTERVAL     int32  = 200
 	MAX_SUCCESSORLIST_LEN int32  = 5
 	STOP                  uint8  = 0
 )
 
-type ctrlMessage struct {
+type CtrlMessage struct {
 	name []string
 	arg  int32 //This arg is useless
 }
 
-func NewCtrlMsg(_n []string, _arg int32) *ctrlMessage {
-	tmsg := new(ctrlMessage)
+func NewCtrlMsg(_n []string, _arg int32) *CtrlMessage {
+	tmsg := new(CtrlMessage)
 	tmsg.arg = _arg
 	tmsg.name = _n
 	return tmsg
 }
 
-func NewCtrlMsgFromString(_n string, _arg int32) *ctrlMessage {
-	tmsg := new(ctrlMessage)
+func NewCtrlMsgFromString(_n string, _arg int32) *CtrlMessage {
+	tmsg := new(CtrlMessage)
 	tmsg.arg = _arg
 	tmsg.name = make([]string, 1)
 	tmsg.name[0] = _n
 	return tmsg
 }
 
-func NewCtrlMsgFromStringSplited(_n string, _arg int32) *ctrlMessage {
-	tmsg := new(ctrlMessage)
+func NewCtrlMsgFromStringSplited(_n string, _arg int32) *CtrlMessage {
+	tmsg := new(CtrlMessage)
 	tmsg.arg = _arg
 	tmsg.name = strings.Fields(_n)
 	return tmsg
 }
 
+func (msg *CtrlMessage) GetName() string {
+	return msg.name[0]
+}
+
 type RingNode struct {
 	Info                NodeInfo
 	InRing              bool
-	currentMsg          ctrlMessage
+	currentMsg          CtrlMessage
 	data                map[string]string
-	UserMessageQueueIn  chan ctrlMessage
-	NodeMessageQueueOut chan ctrlMessage
+	UserMessageQueueIn  chan CtrlMessage
+	NodeMessageQueueOut chan CtrlMessage
 	IfStop              chan uint8
 	nodeFingerTable     *fingerTable
 	nodeSuccessorList   *successorList
 	rpcModule           *rpcServer
 	dataLocker          *sync.Mutex
-}
-
-func (n *RingNode) PrintNodeInfo() {
-	n.Info.Print()
 }
 
 func Between(a *big.Int, i *big.Int, b *big.Int, inclusive bool) bool {
@@ -100,8 +100,8 @@ func NewNode(port int32) *RingNode {
 	ret.Info = *NewNodeInfo(ret.getIp(), port)
 	ret.data = make(map[string]string)
 	ret.InRing = false
-	ret.UserMessageQueueIn = make(chan ctrlMessage, MAX_QUEUE_LEN)
-	ret.NodeMessageQueueOut = make(chan ctrlMessage, MAX_QUEUE_LEN)
+	ret.UserMessageQueueIn = make(chan CtrlMessage, MAX_QUEUE_LEN)
+	ret.NodeMessageQueueOut = make(chan CtrlMessage, MAX_QUEUE_LEN)
 	ret.nodeFingerTable = NewFingerTable()
 	tmpHash := hashAddressFromNodeInfo(&ret.Info)
 	for pos, _ := range ret.nodeFingerTable.table {
@@ -113,6 +113,10 @@ func NewNode(port int32) *RingNode {
 	ret.dataLocker = new(sync.Mutex)
 	ret.rpcModule.server.RegisterName("RingRPC", ret.rpcModule.service)
 	return ret
+}
+
+func (n *RingNode) PrintNodeInfo() {
+	n.Info.Print()
 }
 
 func (n *RingNode) getDataForPre(pre *NodeInfo, dta *map[string]string) {
@@ -133,7 +137,7 @@ func (n *RingNode) SendMessageIn(cmd string) {
 }
 
 func (n *RingNode) SendMessageOut(info string) {
-	n.NodeMessageQueueOut <- *NewCtrlMsgFromString(info, 0)
+	//n.NodeMessageQueueOut <- *NewCtrlMsgFromString(info, 0)
 }
 
 func (n *RingNode) DumpData() {
@@ -178,17 +182,11 @@ func (n *RingNode) getIp() string {
 	return ipAddress
 }
 
-func (n *RingNode) handleMsg(msg *ctrlMessage) {
+func (n *RingNode) handleMsg(msg *CtrlMessage) {
 	n.SendMessageOut("The message " + msg.name[0] + " is handled")
 	switch msg.name[0] {
 	case "quit":
 		n.Quit()
-		for len(n.NodeMessageQueueOut) > 0 {
-		}
-		defer func() {
-			n.IfStop <- STOP
-			PrintLog("[STOP INFO]Node Stop")
-		}()
 		break
 	case "create":
 		n.Create()
@@ -242,7 +240,7 @@ func (n *RingNode) ProcessUserCommand(wg *sync.WaitGroup) {
 		}
 		n.handleMsg(&n.currentMsg)
 	}
-	fmt.Println("PUC QUIT")
+	//fmt.Println("PUC QUIT")
 }
 
 func (n *RingNode) Create() {
@@ -254,8 +252,12 @@ func (n *RingNode) Create() {
 }
 
 func (n *RingNode) Quit() {
-	n.InRing = false
 	n.rpcModule.quit()
+	n.InRing = false
+	for len(n.NodeMessageQueueOut) > 0 {
+	}
+	n.IfStop <- STOP
+	//PrintLog("[STOP INFO]Node Stop")
 }
 
 func (n *RingNode) Join(addrWithPort string) {
@@ -276,8 +278,8 @@ func (n *RingNode) Run(wg *sync.WaitGroup) {
 	var wgi sync.WaitGroup
 	n.rpcModule.startListen()
 	go n.rpcModule.accept()
-	wgi.Add(1)
-	go n.ProcessUserCommand(&wgi)
+	/*wgi.Add(1)
+	go n.ProcessUserCommand(&wgi)*/
 	wgi.Add(1)
 	go n.rpcModule.stabilize(&wgi)
 	wgi.Add(1)

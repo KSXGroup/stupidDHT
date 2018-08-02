@@ -20,7 +20,7 @@ const (
 type NodeConsole struct {
 	ipt        []string
 	node       *RingNode
-	currentMsg ctrlMessage
+	currentMsg CtrlMessage
 	stopSigPNI chan uint8
 }
 
@@ -35,7 +35,7 @@ func (c *NodeConsole) PrintHelp() {
 }
 
 func (c *NodeConsole) processNodeInfo(wg *sync.WaitGroup) {
-	var nodeMsg ctrlMessage
+	var nodeMsg CtrlMessage
 	var ok bool
 	for {
 		nodeMsg, ok = <-c.node.NodeMessageQueueOut
