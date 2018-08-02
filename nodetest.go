@@ -133,6 +133,40 @@ func testForceQuit() {
 	wg.Wait()
 }
 
+func testload() {
+	datalocal = make(map[string]string)
+	for i := 0; i < MAX_NODE; i += 1 {
+		nodeGroup[i] = chordNode.NewNode(int32(START_PORT + i))
+	}
+	localIp = getIp()
+	wg.Add(1)
+	go nodeGroup[0].Run(&wg)
+	nodeGroup[0].Create()
+	for i := 1; i < MAX_NODE; i += 1 {
+		wg.Add(1)
+		go nodeGroup[i].Run(&wg)
+		time.Sleep(time.Millisecond * 100)
+		nodeGroup[i].Join(localIp + ":" + strconv.Itoa(rand.Intn(i)+1111))
+	}
+	go readMsg()
+	time.Sleep(30 * time.Second)
+	for i := int64(0); i < MAX_DATA; i += 1 {
+		k := randString(50)
+		v := randString(50)
+		datalocal[k] = v
+		nodeGroup[rand.Intn(MAX_NODE)].Put(k, v)
+		time.Sleep(time.Millisecond * 10)
+	}
+	for i := 0; i < MAX_NODE; i += 1 {
+		fmt.Printf("NODE#%d:%d\n", i, nodeGroup[i].GetDataSize())
+	}
+	for i := 0; i < MAX_NODE; i += 1 {
+		nodeGroup[i].Quit()
+		time.Sleep(time.Millisecond * 100)
+	}
+	wg.Wait()
+}
+
 func testWhileJoin() {
 	datalocal = make(map[string]string)
 	for i := 0; i < MAX_NODE; i += 1 {
@@ -148,12 +182,12 @@ func testWhileJoin() {
 		go nodeGroup[i].Run(&wg)
 		time.Sleep(time.Millisecond * 100)
 		nodeGroup[i].Join(localIp + ":" + strconv.Itoa(rand.Intn(i)+1111))
-		for j := 1; j <= 100; j += 1 {
+		for j := 1; j <= 50; j += 1 {
 			k := randString(50)
 			v := randString(50)
 			datalocal[k] = v
 			nodeGroup[rand.Intn(i)].Put(k, v)
-			time.Sleep(time.Millisecond * 10)
+			time.Sleep(time.Millisecond * 100)
 		}
 	}
 	time.Sleep(time.Millisecond * 1000)
@@ -171,15 +205,21 @@ func testWhileJoin() {
 		time.Sleep(time.Millisecond * 10)
 	}
 	for i := 0; i < MAX_NODE; i += 1 {
+		fmt.Printf("NODE#%d:%d\n", i, nodeGroup[i].GetDataSize())
+	}
+	for i := 0; i < MAX_NODE; i += 1 {
 		nodeGroup[i].Quit()
-		time.Sleep(time.Millisecond * 500)
+		time.Sleep(time.Millisecond * 400)
 	}
 	//Stop = true
 	wg.Wait()
 }
 
+//func testRandom() {}
+
 func main() {
 	//testWhenStab()
 	//testForceQuit()
 	testWhileJoin()
+	//testload()
 }

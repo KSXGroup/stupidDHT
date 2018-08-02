@@ -119,6 +119,10 @@ func (n *RingNode) PrintNodeInfo() {
 	n.Info.Print()
 }
 
+func (n *RingNode) GetDataSize() int {
+	return len(n.data)
+}
+
 func (n *RingNode) getDataForPre(pre *NodeInfo, dta *map[string]string) {
 	var hs, hpre, hself big.Int
 	hpre = hashAddressFromNodeInfo(pre)
@@ -127,6 +131,7 @@ func (n *RingNode) getDataForPre(pre *NodeInfo, dta *map[string]string) {
 		hs = hashString(k)
 		if !Between(&hpre, &hs, &hself, true) {
 			(*dta)[k] = v
+			delete(n.data, k)
 		}
 	}
 	return
