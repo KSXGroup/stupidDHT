@@ -16,9 +16,9 @@ const (
 	SERVER_TIME_OUT       int64  = 5e8
 	MAX_QUEUE_LEN         int32  = 1024
 	HASHED_ADDRESS_LENGTH int32  = 160
-	FIX_FINGER_INTERVAL   int32  = 200
-	STABILIZE_INTERVAL    int32  = 200
-	CHECKPRE_INTERVAL     int32  = 200
+	FIX_FINGER_INTERVAL   int32  = 100
+	STABILIZE_INTERVAL    int32  = 100
+	CHECKPRE_INTERVAL     int32  = 100
 	MAX_SUCCESSORLIST_LEN int32  = 5
 	STOP                  uint8  = 0
 )
@@ -177,6 +177,20 @@ func (n *RingNode) Get(k string) (string, bool) {
 	}
 	return n.rpcModule.get(k)
 }
+
+/*func (n *RingNode) AppendToData(k string, vap string) bool {
+	if !n.InRing || len(n.IfStop) > 0 {
+		return false
+	}
+	return n.rpcModule.appendToData(k, vap)
+}
+*/
+/*func (n *RingNode) RemoveFromData(k string) bool {
+	if !n.InRing || len(n.IfStop) > 0 {
+		return false
+	}
+	return n.rpcModule.appendToData(k)
+}*/
 
 func (n *RingNode) getIp() string {
 	var ipAddress string

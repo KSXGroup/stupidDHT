@@ -122,13 +122,13 @@ func (h *rpcServer) closestPrecedingNodeInFingerTable(v HashedValue) NodeInfo {
 func (h *rpcServer) closestPrecedingNodeInSuccessorList(v HashedValue) NodeInfo {
 	var stpos int = -1
 	for i := 0; i < int(MAX_SUCCESSORLIST_LEN); i += 1 {
-		if h.node.nodeSuccessorList.list[i] == h.node.Info {
+		if h.node.nodeSuccessorList.list[i].Equal(&h.node.Info) {
 			stpos = i
 			break
 		}
 	}
 	if stpos == -1 {
-		stpos = int(MAX_SUCCESSORLIST_LEN) - 1
+		stpos = int(MAX_SUCCESSORLIST_LEN)
 	}
 	for pos := stpos - 1; pos >= 0; pos -= 1 {
 		self := hashAddressFromNodeInfo(&h.node.Info)
@@ -596,6 +596,7 @@ func (h *RpcServiceModule) FindSuccessorInit(p HashedValue, ret *NodeValue) (err
 		reply.V = h.node.rpcModule.closestPrecedingNode(tp)
 		reply.From = h.node.Info
 		for {
+			//fmt.Printf("FindSucc loop: %s:%d To %s:%d\n", h.node.Info.IpAddress, h.node.Info.Port, reply.V.IpAddress, reply.V.Port)
 			tconn = h.node.rpcModule.rpcDialWithNodeInfo(&reply.V)
 			if tconn == nil {
 				err = errors.New("Dial fail:" + reply.V.GetAddrWithPort())
@@ -608,6 +609,7 @@ func (h *RpcServiceModule) FindSuccessorInit(p HashedValue, ret *NodeValue) (err
 					h.node.nodeSuccessorList.list[ptr].Print()
 					h.node.nodeFingerTable.DumpFingerTable()
 				}*/
+				last := reply.V
 				rerr := cl.Call("RingRPC.FindSuccessor", &tp, reply)
 				/*if h.node.rpcModule.currentFix == 158 {
 					reply.V.Print()
@@ -626,6 +628,11 @@ func (h *RpcServiceModule) FindSuccessorInit(p HashedValue, ret *NodeValue) (err
 					if ret.Status == true {
 						cl.Close()
 						return nil
+					}
+					if ret.V.Equal(&last) {
+						cl.Close()
+						err = errors.New("UnknownError")
+						return err
 					}
 				}
 			}

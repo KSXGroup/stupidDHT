@@ -12,7 +12,7 @@ import (
 
 const (
 	MAX_NODE   int   = 50
-	MAX_DATA   int64 = int64(1e3)
+	MAX_DATA   int64 = int64(1e3 + 500)
 	START_PORT int   = 1111
 )
 
@@ -76,18 +76,19 @@ func testWhenStabAndQuit() {
 	localIp = getIp()
 	wg.Add(1)
 	go nodeGroup[0].Run(&wg)
+	time.Sleep(time.Millisecond * 50)
 	nodeGroup[0].Create()
 	fmt.Println("Join node together")
 	for i := 1; i < MAX_NODE; i += 1 {
 		wg.Add(1)
 		go nodeGroup[i].Run(&wg)
-		time.Sleep(time.Millisecond * 50)
+		time.Sleep(time.Millisecond * 500)
 		nodeGroup[i].Join(localIp + ":" + strconv.Itoa(rand.Intn(i)+1111))
 	}
 	fmt.Println("Finished")
 	go readMsg()
-	fmt.Println("Wait for 30 seconds to stabilize and fix")
-	time.Sleep(30 * time.Second)
+	fmt.Println("Wait for 80 seconds to stabilize and fix")
+	time.Sleep(80 * time.Second)
 	fmt.Println("Finished")
 	fmt.Println("Put data")
 	for i := int64(0); i < MAX_DATA; i += 1 {
@@ -96,7 +97,7 @@ func testWhenStabAndQuit() {
 		keyArray[i] = k
 		datalocal[k] = v
 		nodeGroup[rand.Intn(MAX_NODE)].Put(k, v)
-		time.Sleep(time.Millisecond * 10)
+		time.Sleep(time.Millisecond * 5)
 	}
 	fmt.Println("Finished")
 	fmt.Println("Get data")
@@ -118,7 +119,7 @@ func testWhenStabAndQuit() {
 	failcnt = 0
 	fmt.Println("Node start to quit, start to test when quit")
 	for i := 0; i < MAX_NODE; i += 1 {
-		for j := 1; j <= 10; j += 1 {
+		/*for j := 1; j <= 10; j += 1 {
 			rk := keyArray[rand.Intn(int(MAX_DATA))]
 			ret, ok := nodeGroup[i].Get(rk)
 			if !ok {
@@ -133,11 +134,11 @@ func testWhenStabAndQuit() {
 				}
 			}
 			time.Sleep(time.Millisecond * 10)
-		}
+		}*/
 		nodeGroup[i].Quit()
-		time.Sleep(time.Millisecond * 200)
+		time.Sleep(time.Millisecond * 500)
 	}
-	fmt.Printf("Test finished, fail rate: %d / %d\n", failcnt, MAX_NODE*10)
+	//fmt.Printf("Test finished, fail rate: %d / %d\n", failcnt, MAX_NODE*10)
 	//Stop = true
 	wg.Wait()
 	fmt.Println("Finished")
@@ -205,7 +206,7 @@ func testWhenStabAndQuit() {
 	fmt.Println("Test Finished\n")
 }*/
 
-func testWhileJoin() {
+/*func testWhileJoin() {
 	fmt.Println("Test when network is not stable")
 	var failcnt int = 0
 	datalocal = make(map[string]string)
@@ -215,20 +216,28 @@ func testWhileJoin() {
 	localIp = getIp()
 	wg.Add(1)
 	go readMsg()
-	fmt.Println("Join node per 600ms, and put some data when join, put data per 10ms")
+	fmt.Println("Join node per second, and put some data when join, put data per 50ms")
 	go nodeGroup[0].Run(&wg)
+	time.Sleep(time.Millisecond * 50)
 	nodeGroup[0].Create()
+	time.Sleep(time.Millisecond * 50)
 	for i := 1; i < MAX_NODE; i += 1 {
 		wg.Add(1)
 		go nodeGroup[i].Run(&wg)
-		time.Sleep(100 * time.Millisecond)
-		nodeGroup[i].Join(localIp + ":" + strconv.Itoa(rand.Intn(i)+1111))
-		for j := 1; j <= 10; j += 1 {
+		time.Sleep(200 * time.Millisecond)
+		//fmt.Printf("%dJoinStart", i)
+		t := rand.Intn(i)
+		nodeGroup[i].Join(localIp + ":" + strconv.Itoa(t+1111))
+		fmt.Printf("#%d Join: %d\n", i, t)
+		time.Sleep(200 * time.Millisecond)
+		for j := 1; j <= 20; j += 1 {
 			k := randString(50)
 			v := randString(50)
 			datalocal[k] = v
-			nodeGroup[rand.Intn(i)].Put(k, v)
-			time.Sleep(time.Millisecond * 50)
+			p := rand.Intn(int(i))
+			fmt.Printf("Put %s to %d\n", k, p)
+			nodeGroup[p].Put(k, v)
+			time.Sleep(time.Millisecond * 10)
 		}
 	}
 	fmt.Println("Finished")
@@ -236,6 +245,7 @@ func testWhileJoin() {
 	time.Sleep(1000 * time.Millisecond)
 	fmt.Println("Start get per 10ms Immediately")
 	for k, v := range datalocal {
+		fmt.Printf("find: %s\n", k)
 		ret, ok := nodeGroup[rand.Intn(MAX_NODE)].Get(k)
 		if !ok {
 			failcnt += 1
@@ -260,11 +270,12 @@ func testWhileJoin() {
 	for i := 0; i < MAX_NODE; i += 1 {
 		nodeGroup[i].Quit()
 		time.Sleep(time.Millisecond * 400)
+		fmt.Printf("#%d Quit\n", i)
 	}
 	//Stop = true
 	wg.Wait()
 	fmt.Println("Finished")
-}
+}*/
 
 /*func testRandom() {
 	fmt.Println("Test with random operation")
@@ -346,7 +357,7 @@ func testWhileJoin() {
 	}
 }*/
 
-func testPutAndDelete() {
+/*func testPutAndDelete() {
 	fmt.Println("Start test put and delete")
 	datalocal = make(map[string]string)
 	var failcnt int = 0
@@ -406,7 +417,8 @@ func testPutAndDelete() {
 	for k, _ := range datalocal {
 		s, ok := nodeGroup[rand.Intn(MAX_NODE)].Get(k)
 		if !ok {
-			//fmt.Println("Test Fail")
+			failcnt += 1
+			fmt.Println("Test Fail")
 		} else {
 			if s != "Not Found" {
 				failcnt += 1
@@ -424,9 +436,9 @@ func testPutAndDelete() {
 	//Stop = true
 	wg.Wait()
 	fmt.Println("Finished")
-}
+}*/
 
-func testRobust() {
+/*func testRobust() {
 	fmt.Println("Start test Robust")
 	datalocal = make(map[string]string)
 	var failcnt int = 0
@@ -450,24 +462,26 @@ func testRobust() {
 	time.Sleep(30 * time.Second)
 	fmt.Println("Finished")
 	fmt.Println("Force some node to quit")
-	for i := 40; i < MAX_NODE; i += 1 {
+	for i := 150; i < MAX_NODE; i += 1 {
 		nodeGroup[i].IfStop <- chordNode.STOP
 		time.Sleep(time.Millisecond * 200)
 	}
 	fmt.Println("Finish")
+	//fmt.Println("Wait for 30 seconds to stabilize and fix")
+	//time.Sleep(30 * time.Second)
 	fmt.Println("Put data")
 	for i := int64(0); i < MAX_DATA; i += 1 {
 		k := randString(50)
 		v := randString(50)
 		keyArray[i] = k
 		datalocal[k] = v
-		nodeGroup[rand.Intn(MAX_NODE-10)].Put(k, v)
+		nodeGroup[rand.Intn(MAX_NODE-50)].Put(k, v)
 		time.Sleep(time.Millisecond * 10)
 	}
 	fmt.Println("Finished")
 	fmt.Println("Get data")
 	for k, v := range datalocal {
-		ret, ok := nodeGroup[rand.Intn(MAX_NODE-10)].Get(k)
+		ret, ok := nodeGroup[rand.Intn(MAX_NODE-50)].Get(k)
 		if !ok {
 			fmt.Println("Test Fail")
 		} else {
@@ -482,21 +496,16 @@ func testRobust() {
 	}
 	fmt.Printf("Test finished, fail rate: %d / %d\n", failcnt, len(datalocal))
 	fmt.Println("Node start to quit")
-	for i := 0; i < MAX_NODE-10; i += 1 {
+	for i := 0; i < MAX_NODE-50; i += 1 {
 		nodeGroup[i].Quit()
 		time.Sleep(time.Millisecond * 200)
 	}
 	//Stop = true
 	wg.Wait()
 	fmt.Println("Finished")
-}
+}*/
 
 func main() {
-	testPutAndDelete()
-	fmt.Print("\n")
 	testWhenStabAndQuit()
 	fmt.Print("\n")
-	testWhileJoin()
-	fmt.Print("\n")
-	testRobust()
 }
