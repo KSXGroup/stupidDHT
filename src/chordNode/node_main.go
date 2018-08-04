@@ -16,9 +16,9 @@ const (
 	SERVER_TIME_OUT       int64  = 5e8
 	MAX_QUEUE_LEN         int32  = 1024
 	HASHED_ADDRESS_LENGTH int32  = 160
-	FIX_FINGER_INTERVAL   int32  = 100
-	STABILIZE_INTERVAL    int32  = 100
-	CHECKPRE_INTERVAL     int32  = 100
+	FIX_FINGER_INTERVAL   int32  = 50
+	STABILIZE_INTERVAL    int32  = 50
+	CHECKPRE_INTERVAL     int32  = 50
 	MAX_SUCCESSORLIST_LEN int32  = 5
 	STOP                  uint8  = 0
 )
@@ -159,6 +159,7 @@ func (n *RingNode) DumpData() {
 
 func (n *RingNode) Remove(k string) bool {
 	if !n.InRing || len(n.IfStop) > 0 {
+		fmt.Print("Remove from node not in ring")
 		return false
 	}
 	return n.rpcModule.remove(k)
@@ -166,6 +167,7 @@ func (n *RingNode) Remove(k string) bool {
 
 func (n *RingNode) Put(k string, v string) bool {
 	if !n.InRing || len(n.IfStop) > 0 {
+		fmt.Print("Put from node not in ring")
 		return false
 	}
 	return n.rpcModule.put(k, v)
@@ -173,6 +175,7 @@ func (n *RingNode) Put(k string, v string) bool {
 
 func (n *RingNode) Get(k string) (string, bool) {
 	if !n.InRing || len(n.IfStop) > 0 {
+		fmt.Print("Get from node not in ring")
 		return "", false
 	}
 	return n.rpcModule.get(k)
