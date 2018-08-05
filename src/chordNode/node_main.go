@@ -181,19 +181,19 @@ func (n *RingNode) Get(k string) (string, bool) {
 	return n.rpcModule.get(k)
 }
 
-/*func (n *RingNode) AppendToData(k string, vap string) bool {
+func (n *RingNode) AppendToData(k string, vap string) int {
 	if !n.InRing || len(n.IfStop) > 0 {
-		return false
+		return 0
 	}
 	return n.rpcModule.appendToData(k, vap)
 }
-*/
-/*func (n *RingNode) RemoveFromData(k string) bool {
+
+func (n *RingNode) RemoveFromData(k string, v string) int {
 	if !n.InRing || len(n.IfStop) > 0 {
-		return false
+		return 0
 	}
-	return n.rpcModule.appendToData(k)
-}*/
+	return n.rpcModule.removeFromData(k, v)
+}
 
 func (n *RingNode) getIp() string {
 	var ipAddress string

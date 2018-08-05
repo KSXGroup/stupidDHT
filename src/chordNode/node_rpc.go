@@ -2,11 +2,12 @@ package chordNode
 
 import (
 	"errors"
-	//"fmt"
+	"fmt"
 	"math/big"
 	"net"
 	"net/rpc"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -303,6 +304,78 @@ func (h *rpcServer) remove(k string) bool {
 	}
 }
 
+func (h *rpcServer) appendToData(k string, v string) int {
+	var arg HashedValue
+	var arg1 NodeData
+	var ret NodeValue
+	var ret1 Greet
+	var cl *rpc.Client
+	arg.V = hashString(k)
+	arg.From = h.node.Info
+	ferr := h.service.FindSuccessorInit(arg, &ret)
+	if ferr != nil {
+		h.node.SendMessageOut("AppendToData fail when find succ: " + ferr.Error())
+		return 0
+	}
+	arg1.From = h.node.Info
+	arg1.Key = k
+	arg1.Value = v
+	tconn := h.rpcDialWithNodeInfo(&ret.V)
+	if tconn == nil {
+		h.node.SendMessageOut("AppendToData fail when dial succ")
+		return 0
+	}
+	cl = rpc.NewClient(*tconn)
+	err := cl.Call("RingRPC.AppendToData", &arg1, &ret1)
+	cl.Close()
+	if err != nil {
+		h.node.SendMessageOut("AppendToData fail when call " + err.Error())
+		return 0
+	} else if ret1.Name == "Exists" {
+		return 2
+	} else if ret1.Name == "Success" {
+		return 1
+	} else {
+		return 0
+	}
+
+}
+
+func (h *rpcServer) removeFromData(k string, v string) int {
+	var arg HashedValue
+	var arg1 NodeData
+	var ret NodeValue
+	var ret1 Greet
+	var cl *rpc.Client
+	arg.V = hashString(k)
+	arg.From = h.node.Info
+	ferr := h.service.FindSuccessorInit(arg, &ret)
+	if ferr != nil {
+		h.node.SendMessageOut("RemoveFromData fail when find succ: " + ferr.Error())
+		return 0
+	}
+	arg1.From = h.node.Info
+	arg1.Key = k
+	arg1.Value = v
+	tconn := h.rpcDialWithNodeInfo(&ret.V)
+	if tconn == nil {
+		h.node.SendMessageOut("RemoveFromData fail when dial succ")
+		return 0
+	}
+	cl = rpc.NewClient(*tconn)
+	err := cl.Call("RingRPC.RemoveFromData", &arg1, &ret1)
+	if err != nil {
+		h.node.SendMessageOut("RemoveFromData fail when call " + err.Error())
+		return 0
+	} else if ret1.Name == "Not exist" {
+		return 3
+	} else if ret1.Name == "Success" {
+		return 1
+	} else {
+		return 0
+	}
+}
+
 func (h *rpcServer) quit() {
 	var ret Greet
 	var arg1 NodeValue
@@ -429,8 +502,12 @@ func (h *rpcServer) join(addrWithPort string) bool {
 			return false
 		} else {
 			cl.Close()
+			h.node.rpcModule.fingerTableLockerList[0].Lock()
+			h.node.rpcModule.successorListLocker.Lock()
 			h.node.nodeSuccessorList.list[0] = ret.V
 			h.node.nodeFingerTable.table[0].remoteNode = ret.V
+			h.node.rpcModule.fingerTableLockerList[0].Unlock()
+			h.node.rpcModule.successorListLocker.Unlock()
 			h.node.SendMessageOut("Update successor[0]: " + ret.V.GetAddrWithPort())
 			return true
 		}
@@ -481,10 +558,12 @@ func (h *rpcServer) doStabilize() {
 		} else {
 			//PrintLog("Remove first entry")
 			//	h.node.nodeSuccessorList.DumpSuccessorList()
+			h.node.rpcModule.successorListLocker.Lock()
 			for i := 0; i < int(MAX_SUCCESSORLIST_LEN-1); i += 1 {
 				h.node.nodeSuccessorList.list[i] = h.node.nodeSuccessorList.list[i+1]
 			}
 			h.node.nodeSuccessorList.list[int(MAX_SUCCESSORLIST_LEN-1)].Reset()
+			h.node.rpcModule.successorListLocker.Unlock()
 			//	h.node.nodeSuccessorList.DumpSuccessorList()
 		}
 	}
@@ -502,9 +581,12 @@ func (h *rpcServer) doStabilize() {
 		successor := hashAddressFromNodeInfo(&h.node.nodeSuccessorList.list[0])
 		if reply.IpAddress != "" && Between(&n, &x, &successor, false) {
 			ifChanged = true
+			h.node.rpcModule.fingerTableLockerList[0].Lock()
 			h.node.rpcModule.successorListLocker.Lock()
 			h.node.nodeSuccessorList.list[0] = reply
+			h.node.nodeFingerTable.table[0].remoteNode = reply
 			h.node.rpcModule.successorListLocker.Unlock()
+			h.node.rpcModule.fingerTableLockerList[0].Unlock()
 			h.node.SendMessageOut("Update successor: " + reply.GetAddrWithPort())
 		}
 		if h.node.nodeSuccessorList.list[0].IpAddress != "" {
@@ -631,6 +713,7 @@ func (h *RpcServiceModule) FindSuccessorInit(p HashedValue, ret *NodeValue) (err
 					}
 					if ret.V.Equal(&last) {
 						cl.Close()
+						fmt.Println("Why there is such a fucking problem")
 						err = errors.New("UnknownError")
 						return err
 					}
@@ -819,7 +902,6 @@ func (h *RpcServiceModule) NotifyLeaveAsPre(arg NodeValue, ret *Greet) (err erro
 }
 
 func (h *RpcServiceModule) NotifyLeaveAsSucc(arg NodeQuitData, ret *Greet) (err error) {
-	//TODO lock pre ,getdata & update pre
 	if arg.From.IpAddress == "" || arg.From.Port == 0 {
 		err = errors.New("Who you are! NotifyLeaveAsSucc fail")
 		return err
@@ -837,4 +919,70 @@ func (h *RpcServiceModule) NotifyLeaveAsSucc(arg NodeQuitData, ret *Greet) (err 
 	ret.From = h.node.Info
 	ret.Name = "Success"
 	return nil
+}
+
+func (h *RpcServiceModule) AppendToData(arg NodeData, ret *Greet) (err error) {
+	ret.From = h.node.Info
+	if arg.From.IpAddress == "" || arg.From.Port == 0 {
+		err = errors.New("Who you are! AppendToData fail")
+		ret.Name = "Fail"
+		return err
+	}
+	if arg.Key == "" || arg.Value == "" {
+		err = errors.New("Invalid key or value! AppendToData fail")
+		ret.Name = "Fail"
+		return err
+	}
+	h.node.dataLocker.Lock()
+	v, ok := h.node.data[arg.Key]
+	if !ok {
+		h.node.data[arg.Key] = arg.Value
+		ret.Name = "Success"
+		h.node.dataLocker.Unlock()
+		return nil
+	} else {
+		if strings.Contains(v, arg.Value) {
+			h.node.dataLocker.Unlock()
+			ret.Name = "Exists"
+			return nil
+		} else {
+			h.node.data[arg.Key] = v + arg.Value
+			h.node.dataLocker.Unlock()
+			ret.Name = "Success"
+			return nil
+		}
+	}
+}
+
+func (h *RpcServiceModule) RemoveFromData(arg NodeData, ret *Greet) (err error) {
+	ret.From = h.node.Info
+	if arg.From.IpAddress == "" || arg.From.Port == 0 {
+		err = errors.New("Who you are! RemoveFromData fail")
+		ret.Name = "Fail"
+		return err
+	}
+	if arg.Key == "" || arg.Value == "" {
+		err = errors.New("Invalid key or value! RemoveFromData fail")
+		ret.Name = "Fail"
+		return err
+	}
+	h.node.dataLocker.Lock()
+	v, ok := h.node.data[arg.Key]
+	if !ok {
+		err = errors.New("No such data, RemoveFromData fail")
+		ret.Name = "Fail"
+		h.node.dataLocker.Unlock()
+		return err
+	} else {
+		if !(strings.Contains(v, arg.Value)) {
+			ret.Name = "Not exist"
+			h.node.dataLocker.Unlock()
+			return nil
+		} else {
+			h.node.data[arg.Key] = strings.Replace(v, arg.Value, "", -1)
+			h.node.dataLocker.Unlock()
+			ret.Name = "Success"
+			return nil
+		}
+	}
 }

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	MAX_NODE   int   = 200
+	MAX_NODE   int   = 50
 	MAX_DATA   int64 = int64(1e3 + 500)
 	START_PORT int   = 1111
 )
@@ -67,7 +67,7 @@ func randString(n int) string {
 	return string(b)
 }
 
-func main() {
+func main_test() {
 	localIp = getIp()
 	datalocal = make(map[string]string)
 	wg = new(sync.WaitGroup)
@@ -191,4 +191,78 @@ func main() {
 		}
 	}
 	fmt.Printf("Total fail count: %d", totfailcnt)
+}
+
+func testAppAndRem() {
+	localIp = getIp()
+	mp1 := make(map[string]string)
+	mp2 := make(map[string]string)
+	wg = new(sync.WaitGroup)
+	for i := 0; i < int(MAX_NODE); i += 1 {
+		nodeGroup[i] = chordNode.NewNode(int32(1111 + i))
+		wg.Add(1)
+		go nodeGroup[i].Run(wg)
+	}
+	go readMsg()
+	time.Sleep(time.Millisecond * 200)
+	nodeGroup[0].Create()
+	for i := 1; i < MAX_NODE; i += 1 {
+		nodeGroup[i].Join(localIp + ":" + strconv.Itoa(1111+rand.Intn(i)))
+		time.Sleep(time.Millisecond * 3000)
+	}
+	time.Sleep(time.Millisecond * 30000)
+	for i := 1; i < int(MAX_DATA); i += 1 {
+		k := randString(50)
+		v1 := randString(25)
+		v2 := randString(25)
+		mp1[k] = v1
+		mp2[k] = v2
+	}
+	fmt.Println("Append")
+	for k, v := range mp1 {
+		ret := nodeGroup[rand.Intn(int(MAX_NODE))].AppendToData(k, v)
+		fmt.Printf("Append %s\n", k)
+		if ret == 0 {
+			fmt.Println("Fail")
+		}
+	}
+	for k, _ := range mp1 {
+		ret := nodeGroup[rand.Intn(int(MAX_NODE))].AppendToData(k, mp2[k])
+		fmt.Printf("AppendAgain %s\n", k)
+		if ret == 0 {
+			fmt.Println("Fail")
+		}
+	}
+	fmt.Println("Get")
+	for k, _ := range mp1 {
+		ret, ok := nodeGroup[rand.Intn(int(MAX_NODE))].Get(k)
+		if !ok {
+			fmt.Println("Fail")
+		}
+		if ret != mp1[k]+mp2[k] {
+			fmt.Println("Fail")
+		}
+	}
+	fmt.Println("RemoveFrom")
+	for k, _ := range mp1 {
+		ret := nodeGroup[rand.Intn(int(MAX_NODE))].RemoveFromData(k, mp2[k])
+		fmt.Printf("Remove %s\n", k)
+		if ret == 0 {
+			fmt.Println("Fail")
+		}
+	}
+	fmt.Println("Get After Remove")
+	for k, v := range mp1 {
+		ret, ok := nodeGroup[rand.Intn(int(MAX_NODE))].Get(k)
+		if !ok {
+			fmt.Println("Fail")
+		}
+		if ret != v {
+			fmt.Println("Fail")
+		}
+	}
+}
+
+func main() {
+	testAppAndRem()
 }
