@@ -364,6 +364,7 @@ func (h *rpcServer) removeFromData(k string, v string) int {
 	}
 	cl = rpc.NewClient(*tconn)
 	err := cl.Call("RingRPC.RemoveFromData", &arg1, &ret1)
+	cl.Close()
 	if err != nil {
 		h.node.SendMessageOut("RemoveFromData fail when call " + err.Error())
 		return 0
@@ -980,8 +981,8 @@ func (h *RpcServiceModule) RemoveFromData(arg NodeData, ret *Greet) (err error) 
 			return nil
 		} else {
 			h.node.data[arg.Key] = strings.Replace(v, arg.Value, "", -1)
-			h.node.dataLocker.Unlock()
 			ret.Name = "Success"
+			h.node.dataLocker.Unlock()
 			return nil
 		}
 	}

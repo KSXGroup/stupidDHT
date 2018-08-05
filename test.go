@@ -208,9 +208,9 @@ func testAppAndRem() {
 	nodeGroup[0].Create()
 	for i := 1; i < MAX_NODE; i += 1 {
 		nodeGroup[i].Join(localIp + ":" + strconv.Itoa(1111+rand.Intn(i)))
-		time.Sleep(time.Millisecond * 3000)
+		time.Sleep(time.Millisecond * 200)
 	}
-	time.Sleep(time.Millisecond * 30000)
+	time.Sleep(time.Millisecond * 200)
 	for i := 1; i < int(MAX_DATA); i += 1 {
 		k := randString(50)
 		v1 := randString(25)
@@ -265,4 +265,5 @@ func testAppAndRem() {
 
 func main() {
 	testAppAndRem()
+	//main_test()
 }
