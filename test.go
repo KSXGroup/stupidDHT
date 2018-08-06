@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	MAX_NODE   int   = 50
+	MAX_NODE   int   = 200
 	MAX_DATA   int64 = int64(1e3 + 500)
 	START_PORT int   = 1111
 )
@@ -203,7 +203,7 @@ func testAppAndRem() {
 		wg.Add(1)
 		go nodeGroup[i].Run(wg)
 	}
-	go readMsg()
+	readMsg()
 	time.Sleep(time.Millisecond * 200)
 	nodeGroup[0].Create()
 	for i := 1; i < MAX_NODE; i += 1 {
@@ -264,6 +264,6 @@ func testAppAndRem() {
 }
 
 func main() {
-	testAppAndRem()
-	//main_test()
+	//testAppAndRem()
+	main_test()
 }

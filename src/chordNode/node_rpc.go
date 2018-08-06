@@ -981,6 +981,9 @@ func (h *RpcServiceModule) RemoveFromData(arg NodeData, ret *Greet) (err error) 
 			return nil
 		} else {
 			h.node.data[arg.Key] = strings.Replace(v, arg.Value, "", -1)
+			if h.node.data[arg.Key] == "" {
+				delete(h.node.data, arg.Key)
+			}
 			ret.Name = "Success"
 			h.node.dataLocker.Unlock()
 			return nil

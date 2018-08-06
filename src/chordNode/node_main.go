@@ -292,11 +292,14 @@ func (n *RingNode) Quit() {
 	//PrintLog("[STOP INFO]Node Stop")
 }
 
-func (n *RingNode) Join(addrWithPort string) {
+func (n *RingNode) Join(addrWithPort string) bool {
 	n.nodeFingerTable.predecessor.IpAddress = ""
 	n.nodeFingerTable.predecessor.Port = -1
 	if n.rpcModule.join(addrWithPort) {
 		n.InRing = true
+		return true
+	} else {
+		return false
 	}
 }
 
