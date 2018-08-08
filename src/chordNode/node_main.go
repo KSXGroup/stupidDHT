@@ -13,7 +13,7 @@ import (
 
 const (
 	EXIT_TIP              string = "You can press ANY KEY to exit."
-	SERVER_TIME_OUT       int64  = 1e9
+	SERVER_TIME_OUT       int64  = 5e9
 	MAX_QUEUE_LEN         int32  = 1024
 	HASHED_ADDRESS_LENGTH int32  = 160
 	FIX_FINGER_INTERVAL   int32  = 50
